@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import mimetypes
+import threading
+import urllib.error
+import urllib.parse
+import urllib.request
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+
+class RendererServer:
+    def __init__(self, renderer_dir: Path, raster_upstream: str | None, terrain_upstream: str | None):
+        self._renderer_dir = renderer_dir
+        self._raster_upstream = raster_upstream
+        self._terrain_upstream = terrain_upstream
+        self._httpd: ThreadingHTTPServer | None = None
+        self._thread: threading.Thread | None = None
+        self.port: int | None = None
+
+    @property
+    def base_url(self) -> str:
+        if self.port is None:
+            raise RuntimeError("Server not started")
+        return f"http://127.0.0.1:{self.port}"
+
+    @property
+    def raster_url_template(self) -> str | None:
+        if not self._raster_upstream:
+            return None
+        return f"{self.base_url}/tiles/raster/{{z}}/{{x}}/{{y}}.png"
+
+    @property
+    def terrain_url_template(self) -> str | None:
+        if not self._terrain_upstream:
+            return None
+        return f"{self.base_url}/tiles/terrain/{{z}}/{{x}}/{{y}}.png"
+
+    def __enter__(self) -> "RendererServer":
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.stop()
+
+    def start(self) -> None:
+        if self._httpd is not None:
+            return
+
+        handler = self._make_handler()
+        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        self.port = self._httpd.server_address[1]
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if not self._httpd:
+            return
+        self._httpd.shutdown()
+        self._httpd.server_close()
+        if self._thread:
+            self._thread.join(timeout=2)
+        self._httpd = None
+        self._thread = None
+
+    def _make_handler(self):
+        renderer_dir = self._renderer_dir
+        raster_upstream = self._raster_upstream
+        terrain_upstream = self._terrain_upstream
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                parsed = urllib.parse.urlparse(self.path)
+                path = parsed.path
+
+                if path.startswith("/tiles/raster/"):
+                    self._proxy_tile(raster_upstream, path, parsed.query)
+                    return
+                if path.startswith("/tiles/terrain/"):
+                    self._proxy_tile(terrain_upstream, path, parsed.query)
+                    return
+
+                if path == "/":
+                    path = "/index.html"
+                file_path = (renderer_dir / path.lstrip("/")).resolve()
+                if not file_path.is_file() or renderer_dir not in file_path.parents:
+                    self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+                    return
+
+                content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+                try:
+                    data = file_path.read_bytes()
+                except OSError:
+                    self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to read file")
+                    return
+
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, format: str, *args) -> None:
+                return
+
+            def _proxy_tile(self, upstream: str | None, path: str, query: str) -> None:
+                if not upstream:
+                    self.send_error(HTTPStatus.NOT_FOUND, "Tile upstream not configured")
+                    return
+
+                parts = path.strip("/").split("/")
+                if len(parts) < 5:
+                    self.send_error(HTTPStatus.BAD_REQUEST, "Invalid tile path")
+                    return
+
+                z, x, y_part = parts[2], parts[3], parts[4]
+                y = y_part.split(".")[0]
+                target = upstream.format(z=z, x=x, y=y)
+                if query:
+                    target = f"{target}?{query}"
+
+                req = urllib.request.Request(target, headers={"User-Agent": "trailgen/0.1"})
+                try:
+                    with urllib.request.urlopen(req, timeout=20) as resp:
+                        payload = resp.read()
+                        content_type = resp.headers.get("Content-Type") or "application/octet-stream"
+                        status = resp.status
+                except urllib.error.HTTPError as exc:
+                    print(f"[tile proxy] HTTP {exc.code} {exc.reason} for {target}")
+                    self.send_error(exc.code, exc.reason)
+                    return
+                except Exception as exc:
+                    print(f"[tile proxy] Failed to fetch {target}: {exc}")
+                    self.send_error(HTTPStatus.BAD_GATEWAY, "Failed to fetch tile")
+                    return
+
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+        return Handler
