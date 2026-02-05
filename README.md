@@ -90,6 +90,20 @@ Example with the offline `flat` provider:
 uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --map-provider flat
 ```
 
+## Route Styling
+
+By default the route animates in blue with no markers or outline. You can enable them:
+
+```bash
+uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --show-markers --show-outline
+```
+
+Customize colors and widths:
+
+```bash
+uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --route-color \"#22c55e\" --route-width 5 --outline-color \"#0f172a\" --outline-width 8
+```
+
 ## Output Notes
 
 - The renderer writes PNG frames and then encodes to H.264 MP4 using ffmpeg.
@@ -102,3 +116,7 @@ uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --map-pr
 
 - If you see `ffmpeg not found`, install ffmpeg and ensure it is on your PATH.
 - If Playwright cannot launch, re-run `playwright install chromium`.
+
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See `LICENSE`.

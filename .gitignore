@@ -9,9 +9,14 @@ wheels/
 # Virtual environments
 .venv
 
+# GPX files
+*.gpx
+
 # Render outputs
 outputs/
 frames/
 
 **/.DS_Store
 .env
+
+*.gpx

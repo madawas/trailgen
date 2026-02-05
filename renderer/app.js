@@ -157,16 +157,18 @@
       lineMetrics: true,
     });
 
-    map.addLayer({
-      id: "route-outline",
-      type: "line",
-      source: "route",
-      paint: {
-        "line-color": "#0f172a",
-        "line-width": 7,
-        "line-opacity": 0.8,
-      },
-    });
+    if (cfg.showOutline) {
+      map.addLayer({
+        id: "route-outline",
+        type: "line",
+        source: "route",
+        paint: {
+          "line-color": cfg.outlineColor || "#0f172a",
+          "line-width": cfg.outlineWidth ?? 7,
+          "line-opacity": 0.8,
+        },
+      });
+    }
 
     map.addLayer({
       id: "route-line",
@@ -174,13 +176,12 @@
       source: "route",
       paint: {
         "line-gradient": [
-          "step",
-          ["line-progress"],
-          "rgba(251,146,60,0)",
-          0,
-          "#fb923c",
+          "case",
+          ["<", ["line-progress"], 0],
+          cfg.routeColor || "#3b82f6",
+          "rgba(0,0,0,0)",
         ],
-        "line-width": 4,
+        "line-width": cfg.routeWidth ?? 4,
       },
     });
   }
@@ -188,6 +189,10 @@
   function addMarkers(geojson) {
     if (map.getSource("markers")) {
       map.getSource("markers").setData(geojson);
+      return;
+    }
+
+    if (!cfg.showMarkers) {
       return;
     }
 
@@ -231,11 +236,10 @@
       if (typeof camera.progress === "number") {
         const progress = Math.min(1, Math.max(0, camera.progress));
         const gradient = [
-          "step",
-          ["line-progress"],
-          "rgba(251,146,60,0)",
-          progress,
-          "#fb923c",
+          "case",
+          ["<=", ["line-progress"], progress],
+          cfg.routeColor || "#3b82f6",
+          "rgba(0,0,0,0)",
         ];
         if (map.getLayer("route-line")) {
           map.setPaintProperty("route-line", "line-gradient", gradient);

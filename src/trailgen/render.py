@@ -42,6 +42,13 @@ class RenderOptions:
     pitch_drop: float
     lookahead_m: float
     smooth_factor: float
+    route_smooth: int
+    show_markers: bool
+    show_outline: bool
+    route_color: str
+    route_width: float
+    outline_color: str
+    outline_width: float
     no_terrain: bool
     frames_dir: Path | None
     keep_frames: bool
@@ -194,16 +201,12 @@ def _smooth_follow_frames(frames: list[FrameCamera], factor: float) -> list[Fram
         return frames
 
     alpha = min(1.0, max(0.01, factor))
-    smooth_center = frames[0].center[:]
     x = math.cos(math.radians(frames[0].bearing))
     y = math.sin(math.radians(frames[0].bearing))
     smooth_bearing = frames[0].bearing
 
     smoothed: list[FrameCamera] = []
     for frame in frames:
-        smooth_center[0] = smooth_center[0] * (1 - alpha) + frame.center[0] * alpha
-        smooth_center[1] = smooth_center[1] * (1 - alpha) + frame.center[1] * alpha
-
         bx = math.cos(math.radians(frame.bearing))
         by = math.sin(math.radians(frame.bearing))
         x = x * (1 - alpha) + bx * alpha
@@ -212,7 +215,7 @@ def _smooth_follow_frames(frames: list[FrameCamera], factor: float) -> list[Fram
 
         smoothed.append(
             FrameCamera(
-                center=[smooth_center[0], smooth_center[1]],
+                center=frame.center,
                 bearing=smooth_bearing,
                 pitch=frame.pitch,
                 zoom=frame.zoom,
@@ -239,6 +242,12 @@ def _build_renderer_config(map_cfg: MapConfig, options: RenderOptions, start_cen
         "terrainTiles": map_cfg.terrain_tiles,
         "terrainAttribution": map_cfg.terrain_attribution,
         "blankStyle": map_cfg.blank_style,
+        "showMarkers": options.show_markers,
+        "showOutline": options.show_outline,
+        "routeColor": options.route_color,
+        "routeWidth": options.route_width,
+        "outlineColor": options.outline_color,
+        "outlineWidth": options.outline_width,
         "width": options.width,
         "height": options.height,
         "initialCenter": start_center,
@@ -252,7 +261,8 @@ def render_video(options: RenderOptions) -> None:
     route_points = to_route_points(points)
 
     route_points = resample_by_distance(route_points, step_m=10.0)
-    route_points = chaikin_smooth(route_points, iterations=2)
+    if options.route_smooth > 0:
+        route_points = chaikin_smooth(route_points, iterations=options.route_smooth)
     if len(route_points) < 2:
         raise ValueError("Route must contain at least two distinct points.")
 
@@ -287,6 +297,9 @@ def render_video(options: RenderOptions) -> None:
     if options.no_terrain:
         renderer_cfg["terrainTiles"] = None
         renderer_cfg["terrainAttribution"] = None
+    if map_cfg.blank_style:
+        renderer_cfg["showMarkers"] = False
+        renderer_cfg["showOutline"] = False
 
     start_bearing = bearing_deg(route_points[0], route_points[1]) + options.bearing_offset
     end_bearing = bearing_deg(route_points[-2], route_points[-1]) + options.bearing_offset

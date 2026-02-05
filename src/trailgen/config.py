@@ -25,7 +25,7 @@ def map_config(provider: str) -> MapConfig:
         if os.getenv("MAPTILER_KEY"):
             provider = "maptiler"
         else:
-            provider = "opentopomap"
+            provider = "flat"
 
     if provider == "maptiler":
         key = os.getenv("MAPTILER_KEY")

@@ -94,8 +94,48 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument(
         "--smooth-factor",
         type=float,
-        default=0.18,
-        help="Camera smoothing factor (0-1). Higher = less smoothing.",
+        default=0.12,
+        help="Camera bearing smoothing factor (0-1). Higher = less smoothing.",
+    )
+    render.add_argument(
+        "--route-smooth",
+        type=int,
+        default=1,
+        help="Chaikin smoothing iterations for the route line.",
+    )
+    render.add_argument(
+        "--show-markers",
+        action="store_true",
+        help="Show start/end markers.",
+    )
+    render.add_argument(
+        "--show-outline",
+        action="store_true",
+        help="Show a route outline under the main line.",
+    )
+    render.add_argument(
+        "--route-color",
+        type=str,
+        default="#3b82f6",
+        help="Route line color.",
+    )
+    render.add_argument(
+        "--route-width",
+        type=float,
+        default=4.0,
+        help="Route line width.",
+    )
+    render.add_argument(
+        "--outline-color",
+        type=str,
+        default="#0f172a",
+        help="Route outline color.",
+    )
+    render.add_argument(
+        "--outline-width",
+        type=float,
+        default=7.0,
+        help="Route outline width.",
     )
     render.add_argument(
         "--no-terrain",
@@ -191,6 +231,13 @@ def main() -> None:
             pitch_drop=args.pitch_drop,
             lookahead_m=args.lookahead_m,
             smooth_factor=args.smooth_factor,
+            route_smooth=args.route_smooth,
+            show_markers=args.show_markers,
+            show_outline=args.show_outline,
+            route_color=args.route_color,
+            route_width=args.route_width,
+            outline_color=args.outline_color,
+            outline_width=args.outline_width,
             no_terrain=args.no_terrain,
             frames_dir=args.frames_dir,
             keep_frames=args.keep_frames,
