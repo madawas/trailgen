@@ -24,6 +24,8 @@ MAPTILER_KEY=your_key_here
 uv run playwright install chromium
 ```
 
+Note: Installing the Python package does not install Playwright browser binaries. You must run the command above on each machine.
+
 4. Render a video (vertical 720p @ 30 fps):
 
 ```bash
