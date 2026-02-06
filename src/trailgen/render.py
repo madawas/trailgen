@@ -42,13 +42,8 @@ class RenderOptions:
     lookahead_m: float
     smooth_factor: float
     route_smooth: int
-    show_markers: bool
-    show_outline: bool
     route_color: str
     route_width: float
-    outline_color: str
-    outline_width: float
-    no_terrain: bool
     frames_dir: Path | None
     keep_frames: bool
     crf: int
@@ -73,26 +68,6 @@ def _build_route_geojson(route: list[tuple[float, float]]) -> dict:
                 "geometry": {"type": "LineString", "coordinates": route},
                 "properties": {},
             }
-        ],
-    }
-
-
-def _build_marker_geojson(route: list[tuple[float, float]]) -> dict:
-    if not route:
-        return {"type": "FeatureCollection", "features": []}
-    return {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": route[0]},
-                "properties": {"label": "start", "color": "#16a34a"},
-            },
-            {
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": route[-1]},
-                "properties": {"label": "end", "color": "#ef4444"},
-            },
         ],
     }
 
@@ -241,12 +216,8 @@ def _build_renderer_config(map_cfg: MapConfig, options: RenderOptions, start_cen
         "terrainTiles": map_cfg.terrain_tiles,
         "terrainAttribution": map_cfg.terrain_attribution,
         "blankStyle": map_cfg.blank_style,
-        "showMarkers": options.show_markers,
-        "showOutline": options.show_outline,
         "routeColor": options.route_color,
         "routeWidth": options.route_width,
-        "outlineColor": options.outline_color,
-        "outlineWidth": options.outline_width,
         "width": options.width,
         "height": options.height,
         "initialCenter": start_center,
@@ -289,16 +260,9 @@ def render_video(options: RenderOptions) -> None:
 
     route_coords = [[p.lon, p.lat] for p in route_points]
     route_geojson = _build_route_geojson(route_coords)
-    marker_geojson = _build_marker_geojson(route_coords)
 
     map_cfg = map_config()
     renderer_cfg = _build_renderer_config(map_cfg, options, route_coords[0])
-    if options.no_terrain:
-        renderer_cfg["terrainTiles"] = None
-        renderer_cfg["terrainAttribution"] = None
-    if map_cfg.blank_style:
-        renderer_cfg["showMarkers"] = False
-        renderer_cfg["showOutline"] = False
 
     start_bearing = bearing_deg(route_points[0], route_points[1]) + options.bearing_offset
     end_bearing = bearing_deg(route_points[-2], route_points[-1]) + options.bearing_offset
@@ -393,7 +357,6 @@ def render_video(options: RenderOptions) -> None:
                 raise RuntimeError(error_message)
 
             page.evaluate("data => window.__setRoute(data)", route_geojson)
-            page.evaluate("data => window.__setMarkers(data)", marker_geojson)
             page.wait_for_function("window.__ROUTE_READY__ === true")
 
             for idx, cam in enumerate(cameras, start=1):

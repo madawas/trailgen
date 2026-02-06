@@ -139,19 +139,6 @@
       lineMetrics: true,
     });
 
-    if (cfg.showOutline) {
-      map.addLayer({
-        id: "route-outline",
-        type: "line",
-        source: "route",
-        paint: {
-          "line-color": cfg.outlineColor || "#0f172a",
-          "line-width": cfg.outlineWidth ?? 7,
-          "line-opacity": 0.8,
-        },
-      });
-    }
-
     map.addLayer({
       id: "route-line",
       type: "line",
@@ -168,42 +155,12 @@
     });
   }
 
-  function addMarkers(geojson) {
-    if (map.getSource("markers")) {
-      map.getSource("markers").setData(geojson);
-      return;
-    }
-
-    if (!cfg.showMarkers) {
-      return;
-    }
-
-    map.addSource("markers", {
-      type: "geojson",
-      data: geojson,
-    });
-
-    map.addLayer({
-      id: "markers",
-      type: "circle",
-      source: "markers",
-      paint: {
-        "circle-radius": 6,
-        "circle-color": ["get", "color"],
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#0f172a",
-      },
-    });
-  }
 
   window.__setRoute = (geojson) => {
     addRouteLayer(geojson);
     window.__ROUTE_READY__ = true;
   };
 
-  window.__setMarkers = (geojson) => {
-    addMarkers(geojson);
-  };
 
   window.__renderFrame = (camera) => {
     return new Promise((resolve) => {

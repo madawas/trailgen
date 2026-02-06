@@ -30,12 +30,6 @@ uv run playwright install chromium
 uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --fps 30 --resolution 720p --orientation portrait --duration 45
 ```
 
-If terrain tiles are failing or slow, you can disable terrain:
-
-```bash
-uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --no-terrain
-```
-
 Note: `uv init` is only for creating new projects. This repo already has `pyproject.toml`, so you can go straight to `uv venv`/`uv run`.
 
 ## Resolution and Orientation
@@ -63,12 +57,6 @@ uv run trailgen render --gpx /path/to/route.gpx --out outputs/route-4k.mp4 --fps
 The renderer uses MapTiler's `hybrid-v4` style by default and a terrain DEM for 3D relief.
 
 ## Route Styling
-
-By default the route animates in blue with no markers or outline. You can enable them:
-
-```bash
-uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --show-markers --show-outline
-```
 
 Customize colors and widths:
 

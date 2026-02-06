@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 
 TERRAIN_TILES = "https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"
-TERRAIN_ATTRIBUTION = "Terrain tiles from Mapzen, hosted on AWS Open Data"
+TERRAIN_ATTRIBUTION = "© Mapzen"
 MAPTILER_STYLE = "https://api.maptiler.com/maps/hybrid-v4/style.json?key={key}"
 
 @dataclass(frozen=True)
