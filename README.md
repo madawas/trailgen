@@ -8,7 +8,7 @@ Generate 3D trail videos from GPX files using a Python CLI, MapLibre GL, and ffm
 
 ```bash
 uv venv
-uv pip install -e .
+uv pip install -e ".[dev]"
 ```
 
 2. Add your MapTiler API key in `.env`:
@@ -76,6 +76,28 @@ uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --route-
 
 - If you see `ffmpeg not found`, install ffmpeg and ensure it is on your PATH.
 - If Playwright cannot launch, re-run `playwright install chromium`.
+
+## Development
+
+Install pre-commit hooks:
+
+```bash
+uv run pre-commit install
+```
+
+Run format/lint:
+
+```bash
+make format
+make lint
+make precommit
+```
+
+Release build and tag:
+
+```bash
+make release VERSION=0.1.0
+```
 
 ## License
 
