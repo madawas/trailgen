@@ -11,10 +11,10 @@ uv venv
 uv pip install -e .
 ```
 
-2. (Optional) Add API keys in `.env`:
+2. Add your MapTiler API key in `.env`:
 
 ```bash
-# MapTiler (optional)
+# MapTiler (required)
 MAPTILER_KEY=your_key_here
 ```
 
@@ -58,37 +58,9 @@ Use a 4K frame size:
 uv run trailgen render --gpx /path/to/route.gpx --out outputs/route-4k.mp4 --fps 60 --resolution 4k --orientation landscape --duration 45
 ```
 
-## Map Providers
+## Maps
 
-The renderer supports a topographic basemap by default and uses a terrain DEM for 3D relief.
-
-- `auto` (default)
-  - Uses MapTiler topo style if `MAPTILER_KEY` is set
-  - Falls back to OpenTopoMap tiles otherwise
-- `maptiler`
-  - Requires `MAPTILER_KEY`
-- `maptiler-satellite`
-  - Requires `MAPTILER_KEY`
-- `flat`
-  - No external tiles (offline), useful for validating the render pipeline
-
-Example with MapTiler:
-
-```bash
-uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --map-provider maptiler
-```
-
-Example with MapTiler Satellite:
-
-```bash
-uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --map-provider maptiler-satellite
-```
-
-Example with the offline `flat` provider:
-
-```bash
-uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --map-provider flat
-```
+The renderer uses MapTiler's `hybrid-v4` style by default and a terrain DEM for 3D relief.
 
 ## Route Styling
 
@@ -110,7 +82,7 @@ uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --route-
 - Use `--keep-frames` to keep PNGs for debugging.
 - Use `--frames-dir` to direct frames to a specific folder.
 - Fly-in/out tuning options: `--intro-seconds`, `--outro-seconds`, `--orbit-deg`, `--zoom-out`, `--pitch-drop`.
-- The renderer serves a local HTTP page and proxies tiles to avoid CORS issues with some providers.
+- The renderer serves a local HTTP page and proxies tiles to avoid CORS issues with tile requests.
 
 ## Troubleshooting
 

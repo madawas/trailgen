@@ -1,7 +1,6 @@
 (() => {
   const cfg = window.__CONFIG__ || {};
   const mapContainer = document.getElementById("map");
-  const attributionEl = document.getElementById("attribution");
 
   function fail(error) {
     window.__ERROR__ = error?.message || String(error || "Renderer failed to initialize.");
@@ -27,6 +26,8 @@
       antialias: true,
       attributionControl: false,
     });
+
+    map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
   } catch (error) {
     fail(error);
     return;
@@ -126,25 +127,6 @@
     };
   }
 
-  function updateAttribution() {
-    const parts = [];
-    if (cfg.styleAttribution) {
-      parts.push(cfg.styleAttribution);
-    }
-    if (cfg.rasterAttribution) {
-      parts.push(cfg.rasterAttribution);
-    }
-    if (cfg.terrainAttribution) {
-      parts.push(cfg.terrainAttribution);
-    }
-    if (parts.length) {
-      attributionEl.textContent = parts.join(" | ");
-      attributionEl.style.display = "block";
-    } else {
-      attributionEl.style.display = "none";
-    }
-  }
-
   function addRouteLayer(geojson) {
     if (map.getSource("route")) {
       map.getSource("route").setData(geojson);
@@ -216,7 +198,6 @@
 
   window.__setRoute = (geojson) => {
     addRouteLayer(geojson);
-    updateAttribution();
     window.__ROUTE_READY__ = true;
   };
 

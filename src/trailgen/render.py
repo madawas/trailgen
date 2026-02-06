@@ -31,7 +31,6 @@ class RenderOptions:
     height: int
     duration: float | None
     speed_kmh: float
-    map_provider: str
     zoom: float
     pitch: float
     bearing_offset: float
@@ -260,7 +259,7 @@ def render_video(options: RenderOptions) -> None:
     points = load_gpx(options.gpx_path)
     route_points = to_route_points(points)
 
-    route_points = resample_by_distance(route_points, step_m=10.0)
+    route_points = resample_by_distance(route_points, step_m=100.0)
     if options.route_smooth > 0:
         route_points = chaikin_smooth(route_points, iterations=options.route_smooth)
     if len(route_points) < 2:
@@ -292,7 +291,7 @@ def render_video(options: RenderOptions) -> None:
     route_geojson = _build_route_geojson(route_coords)
     marker_geojson = _build_marker_geojson(route_coords)
 
-    map_cfg = map_config(options.map_provider)
+    map_cfg = map_config()
     renderer_cfg = _build_renderer_config(map_cfg, options, route_coords[0])
     if options.no_terrain:
         renderer_cfg["terrainTiles"] = None

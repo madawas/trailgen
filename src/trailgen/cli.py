@@ -68,12 +68,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Route speed in km/h for computing duration.",
     )
     render.add_argument(
-        "--map-provider",
-        choices=["auto", "maptiler", "maptiler-satellite", "flat"],
-        default="auto",
-        help="Basemap provider.",
-    )
-    render.add_argument(
         "--zoom",
         type=float,
         default=14.5,
@@ -220,7 +214,6 @@ def main() -> None:
             height=height,
             duration=args.duration,
             speed_kmh=args.speed_kmh,
-            map_provider=args.map_provider,
             zoom=args.zoom,
             pitch=args.pitch,
             bearing_offset=args.bearing_offset,
