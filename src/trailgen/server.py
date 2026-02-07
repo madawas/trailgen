@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import mimetypes
+import os
+import time
 import threading
 import urllib.error
 import urllib.parse
@@ -11,10 +13,19 @@ from pathlib import Path
 
 
 class RendererServer:
-    def __init__(self, renderer_dir: Path, raster_upstream: str | None, terrain_upstream: str | None):
+    def __init__(
+        self,
+        renderer_dir: Path,
+        raster_upstream: str | None,
+        terrain_upstream: str | None,
+        cache_dir: Path,
+        debug: bool = False,
+    ):
         self._renderer_dir = renderer_dir
         self._raster_upstream = raster_upstream
         self._terrain_upstream = terrain_upstream
+        self._cache_dir = cache_dir
+        self._debug = debug
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.port: int | None = None
@@ -68,6 +79,9 @@ class RendererServer:
         renderer_dir = self._renderer_dir
         raster_upstream = self._raster_upstream
         terrain_upstream = self._terrain_upstream
+        cache_dir = self._cache_dir
+        debug = self._debug
+        cache_max_bytes = 2 * 1024 * 1024 * 1024
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
@@ -88,11 +102,16 @@ class RendererServer:
                     self.send_error(HTTPStatus.NOT_FOUND, "Not found")
                     return
 
-                content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+                content_type = (
+                    mimetypes.guess_type(str(file_path))[0]
+                    or "application/octet-stream"
+                )
                 try:
                     data = file_path.read_bytes()
                 except OSError:
-                    self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to read file")
+                    self.send_error(
+                        HTTPStatus.INTERNAL_SERVER_ERROR, "Failed to read file"
+                    )
                     return
 
                 self.send_response(HTTPStatus.OK)
@@ -106,7 +125,9 @@ class RendererServer:
 
             def _proxy_tile(self, upstream: str | None, path: str, query: str) -> None:
                 if not upstream:
-                    self.send_error(HTTPStatus.NOT_FOUND, "Tile upstream not configured")
+                    self.send_error(
+                        HTTPStatus.NOT_FOUND, "Tile upstream not configured"
+                    )
                     return
 
                 parts = path.strip("/").split("/")
@@ -116,24 +137,60 @@ class RendererServer:
 
                 z, x, y_part = parts[2], parts[3], parts[4]
                 y = y_part.split(".")[0]
+                ext = y_part.split(".")[-1] if "." in y_part else "png"
+
+                cache_path = cache_dir / parts[1] / z / x / f"{y}.{ext}"
+                if cache_path.is_file():
+                    try:
+                        data = cache_path.read_bytes()
+                        content_type = (
+                            mimetypes.guess_type(str(cache_path))[0]
+                            or "application/octet-stream"
+                        )
+                        now = time.time()
+                        os.utime(cache_path, (now, now))
+                        self.send_response(HTTPStatus.OK)
+                        self.send_header("Content-Type", content_type)
+                        self.send_header("Access-Control-Allow-Origin", "*")
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                        return
+                    except OSError:
+                        pass
+
                 target = upstream.format(z=z, x=x, y=y)
                 if query:
                     target = f"{target}?{query}"
 
-                req = urllib.request.Request(target, headers={"User-Agent": "trailgen/0.1"})
+                req = urllib.request.Request(
+                    target, headers={"User-Agent": "trailgen/0.1"}
+                )
                 try:
                     with urllib.request.urlopen(req, timeout=20) as resp:
                         payload = resp.read()
-                        content_type = resp.headers.get("Content-Type") or "application/octet-stream"
+                        content_type = (
+                            resp.headers.get("Content-Type")
+                            or "application/octet-stream"
+                        )
                         status = resp.status
                 except urllib.error.HTTPError as exc:
-                    print(f"[tile proxy] HTTP {exc.code} {exc.reason} for {target}")
+                    if debug:
+                        print(f"[tile proxy] HTTP {exc.code} {exc.reason} for {target}")
                     self.send_error(exc.code, exc.reason)
                     return
                 except Exception as exc:
-                    print(f"[tile proxy] Failed to fetch {target}: {exc}")
+                    if debug:
+                        print(f"[tile proxy] Failed to fetch {target}: {exc}")
                     self.send_error(HTTPStatus.BAD_GATEWAY, "Failed to fetch tile")
                     return
+
+                try:
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    cache_path.write_bytes(payload)
+                    RendererServer._enforce_cache_limit(cache_dir, cache_max_bytes)
+                except OSError:
+                    pass
 
                 self.send_response(status)
                 self.send_header("Content-Type", content_type)
@@ -143,3 +200,30 @@ class RendererServer:
                 self.wfile.write(payload)
 
         return Handler
+
+    @staticmethod
+    def _enforce_cache_limit(cache_dir: Path, max_bytes: int) -> None:
+        try:
+            entries = []
+            total = 0
+            for path in cache_dir.rglob("*"):
+                if not path.is_file():
+                    continue
+                stat = path.stat()
+                total += stat.st_size
+                entries.append((stat.st_mtime, stat.st_size, path))
+
+            if total <= max_bytes:
+                return
+
+            entries.sort(key=lambda item: item[0])
+            for _, size, path in entries:
+                try:
+                    path.unlink()
+                    total -= size
+                except OSError:
+                    continue
+                if total <= max_bytes:
+                    break
+        except OSError:
+            return

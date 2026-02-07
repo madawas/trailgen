@@ -14,7 +14,9 @@ RESOLUTION_DIMENSIONS = {
 }
 
 
-def resolve_dimensions(args: argparse.Namespace, parser: argparse.ArgumentParser) -> tuple[int, int]:
+def resolve_dimensions(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> tuple[int, int]:
     width = args.width
     height = args.height
 
@@ -39,7 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     render = sub.add_parser("render", help="Render a 3D trail video from a GPX file.")
     render.add_argument("--gpx", required=True, type=Path, help="Path to a GPX file.")
-    render.add_argument("--out", required=True, type=Path, help="Output video path (mp4).")
+    render.add_argument(
+        "--out", required=True, type=Path, help="Output video path (mp4)."
+    )
     render.add_argument("--fps", type=int, default=30, help="Frames per second.")
     render.add_argument(
         "--resolution",
@@ -53,8 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="portrait",
         help="Orientation for preset resolutions.",
     )
-    render.add_argument("--width", type=int, default=None, help="Frame width in pixels.")
-    render.add_argument("--height", type=int, default=None, help="Frame height in pixels.")
+    render.add_argument(
+        "--width", type=int, default=None, help="Frame width in pixels."
+    )
+    render.add_argument(
+        "--height", type=int, default=None, help="Frame height in pixels."
+    )
     render.add_argument(
         "--duration",
         type=float,
@@ -70,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument(
         "--zoom",
         type=float,
-        default=14.5,
+        default=14.0,
         help="Camera zoom level.",
     )
     render.add_argument(

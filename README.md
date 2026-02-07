@@ -34,6 +34,10 @@ uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --fps 30
 
 Note: `uv init` is only for creating new projects. This repo already has `pyproject.toml`, so you can go straight to `uv venv`/`uv run`.
 
+## Tile Cache
+
+Tiles are cached on disk at `~/.trailgen/cache`.
+
 ## Resolution and Orientation
 
 - Presets: `--resolution 720p|1080p|4k`
@@ -63,7 +67,7 @@ The renderer uses MapTiler's `hybrid-v4` style by default and a terrain DEM for 
 Customize colors and widths:
 
 ```bash
-uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --route-color \"#22c55e\" --route-width 5 --outline-color \"#0f172a\" --outline-width 8
+uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --route-color \"#22c55e\" --route-width 5
 ```
 
 ## Output Notes
@@ -78,6 +82,7 @@ uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --route-
 
 - If you see `ffmpeg not found`, install ffmpeg and ensure it is on your PATH.
 - If Playwright cannot launch, re-run `playwright install chromium`.
+- To enable verbose network/debug logs, set `TRAILGEN_DEBUG=1`.
 
 ## Development
 

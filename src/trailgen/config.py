@@ -4,9 +4,12 @@ import os
 from dataclasses import dataclass
 
 
-TERRAIN_TILES = "https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"
-TERRAIN_ATTRIBUTION = "© Mapzen"
 MAPTILER_STYLE = "https://api.maptiler.com/maps/hybrid-v4/style.json?key={key}"
+MAPTILER_TERRAIN_TILES = (
+    "https://api.maptiler.com/tiles/terrain-rgb-v2/{{z}}/{{x}}/{{y}}.webp?key={key}"
+)
+MAPTILER_TERRAIN_ENCODING = "mapbox"
+
 
 @dataclass(frozen=True)
 class MapConfig:
@@ -16,6 +19,7 @@ class MapConfig:
     raster_attribution: str | None
     terrain_tiles: str | None
     terrain_attribution: str | None
+    terrain_encoding: str | None
     blank_style: bool = False
 
 
@@ -29,6 +33,7 @@ def map_config() -> MapConfig:
         style_attribution=None,
         raster_tiles=None,
         raster_attribution=None,
-        terrain_tiles=TERRAIN_TILES,
-        terrain_attribution=TERRAIN_ATTRIBUTION,
+        terrain_tiles=MAPTILER_TERRAIN_TILES.format(key=key),
+        terrain_attribution=None,
+        terrain_encoding=MAPTILER_TERRAIN_ENCODING,
     )

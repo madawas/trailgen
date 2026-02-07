@@ -40,7 +40,7 @@
           type: "raster-dem",
           tiles: [cfg.terrainTiles],
           tileSize: 256,
-          encoding: "terrarium",
+          encoding: cfg.terrainEncoding || "terrarium",
           attribution: cfg.terrainAttribution || "",
         });
 

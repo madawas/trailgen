@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -170,7 +171,9 @@ def _outro_frames(
     return cameras
 
 
-def _smooth_follow_frames(frames: list[FrameCamera], factor: float) -> list[FrameCamera]:
+def _smooth_follow_frames(
+    frames: list[FrameCamera], factor: float
+) -> list[FrameCamera]:
     if not frames:
         return frames
 
@@ -215,6 +218,7 @@ def _build_renderer_config(map_cfg: MapConfig, options: RenderOptions, start_cen
         "rasterAttribution": map_cfg.raster_attribution,
         "terrainTiles": map_cfg.terrain_tiles,
         "terrainAttribution": map_cfg.terrain_attribution,
+        "terrainEncoding": map_cfg.terrain_encoding,
         "blankStyle": map_cfg.blank_style,
         "routeColor": options.route_color,
         "routeWidth": options.route_width,
@@ -262,10 +266,20 @@ def render_video(options: RenderOptions) -> None:
     route_geojson = _build_route_geojson(route_coords)
 
     map_cfg = map_config()
-    renderer_cfg = _build_renderer_config(map_cfg, options, route_coords[0])
+    scale = options.height / 1280.0
+    scaled_route_width = max(1.0, options.route_width * scale)
+    zoom_effective = min(14.0, options.zoom + math.log2(scale))
 
-    start_bearing = bearing_deg(route_points[0], route_points[1]) + options.bearing_offset
-    end_bearing = bearing_deg(route_points[-2], route_points[-1]) + options.bearing_offset
+    renderer_cfg = _build_renderer_config(map_cfg, options, route_coords[0])
+    renderer_cfg["routeWidth"] = scaled_route_width
+    renderer_cfg["initialZoom"] = zoom_effective
+
+    start_bearing = (
+        bearing_deg(route_points[0], route_points[1]) + options.bearing_offset
+    )
+    end_bearing = (
+        bearing_deg(route_points[-2], route_points[-1]) + options.bearing_offset
+    )
 
     cameras = []
     cameras.extend(
@@ -274,7 +288,7 @@ def render_video(options: RenderOptions) -> None:
             intro_frames,
             start_bearing,
             options.pitch,
-            options.zoom,
+            zoom_effective,
             options.orbit_degrees,
             options.zoom_out,
             options.pitch_drop,
@@ -286,7 +300,7 @@ def render_video(options: RenderOptions) -> None:
         total_distance,
         main_frames,
         options.pitch,
-        options.zoom,
+        zoom_effective,
         options.bearing_offset,
         options.lookahead_m,
     )
@@ -298,7 +312,7 @@ def render_video(options: RenderOptions) -> None:
             outro_frames,
             end_bearing,
             options.pitch,
-            options.zoom,
+            zoom_effective,
             options.orbit_degrees,
             options.zoom_out,
             options.pitch_drop,
@@ -306,11 +320,23 @@ def render_video(options: RenderOptions) -> None:
     )
 
     frames_dir = _ensure_frames_dir(options.frames_dir)
-    renderer_dir = (Path(__file__).resolve().parent.parent / ".." / "renderer").resolve()
+    renderer_dir = (
+        Path(__file__).resolve().parent.parent / ".." / "renderer"
+    ).resolve()
 
-    print(f"Rendering {total_frames} frames to {frames_dir}...")
+    print(f"Rendering {total_frames} frames to {frames_dir}...", flush=True)
+    last_percent = -1
 
-    with RendererServer(renderer_dir, map_cfg.raster_tiles, map_cfg.terrain_tiles) as server:
+    cache_dir = Path("~/.trailgen/cache").expanduser()
+    debug = os.getenv("TRAILGEN_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+
+    with RendererServer(
+        renderer_dir,
+        map_cfg.raster_tiles,
+        map_cfg.terrain_tiles,
+        cache_dir=cache_dir,
+        debug=debug,
+    ) as server:
         if server.raster_url_template:
             renderer_cfg["rasterTiles"] = server.raster_url_template
         if server.terrain_url_template:
@@ -324,36 +350,47 @@ def render_video(options: RenderOptions) -> None:
                     "--ignore-gpu-blocklist",
                 ]
             )
-            page = browser.new_page(viewport={"width": options.width, "height": options.height})
+            page = browser.new_page(
+                viewport={"width": options.width, "height": options.height}
+            )
             page.set_default_timeout(120_000)
-            page.on("console", lambda msg: print(f"[browser {msg.type}] {msg.text}"))
-            page.on("pageerror", lambda err: print(f"[browser error] {err}"))
-            def log_request_failed(request) -> None:
-                failure = request.failure
-                error_text = None
-                try:
-                    if callable(failure):
-                        info = failure()
-                        if isinstance(info, dict):
-                            error_text = info.get("errorText")
-                    elif isinstance(failure, dict):
-                        error_text = failure.get("errorText")
-                    else:
-                        error_text = getattr(failure, "error_text", None)
-                except Exception:
+            if debug:
+                page.on(
+                    "console", lambda msg: print(f"[browser {msg.type}] {msg.text}")
+                )
+                page.on("pageerror", lambda err: print(f"[browser error] {err}"))
+
+                def log_request_failed(request) -> None:
+                    failure = request.failure
                     error_text = None
+                    try:
+                        if callable(failure):
+                            info = failure()
+                            if isinstance(info, dict):
+                                error_text = info.get("errorText")
+                        elif isinstance(failure, dict):
+                            error_text = failure.get("errorText")
+                        else:
+                            error_text = getattr(failure, "error_text", None)
+                    except Exception:
+                        error_text = None
 
-                if not error_text:
-                    error_text = "request failed"
-                print(f"[request failed] {error_text} {request.url}")
+                    if not error_text:
+                        error_text = "request failed"
+                    print(f"[request failed] {error_text} {request.url}")
 
-            page.on("requestfailed", log_request_failed)
+                page.on("requestfailed", log_request_failed)
             page.add_init_script(f"window.__CONFIG__ = {json.dumps(renderer_cfg)};")
             page.goto(f"{server.base_url}/index.html", wait_until="load")
-            page.wait_for_function("window.__READY__ === true || window.__READY__ === 'error'")
+            page.wait_for_function(
+                "window.__READY__ === true || window.__READY__ === 'error'"
+            )
             ready_state = page.evaluate("window.__READY__")
-            if ready_state != True:
-                error_message = page.evaluate("window.__ERROR__") or "Renderer failed to initialize."
+            if not ready_state:
+                error_message = (
+                    page.evaluate("window.__ERROR__")
+                    or "Renderer failed to initialize."
+                )
                 raise RuntimeError(error_message)
 
             page.evaluate("data => window.__setRoute(data)", route_geojson)
@@ -363,14 +400,23 @@ def render_video(options: RenderOptions) -> None:
                 page.evaluate("data => window.__renderFrame(data)", cam.__dict__)
                 frame_path = frames_dir / f"frame_{idx:06d}.png"
                 page.screenshot(path=str(frame_path))
-                if idx % 120 == 0 or idx == total_frames:
-                    print(f"  Frame {idx}/{total_frames}")
+                percent = int((idx / total_frames) * 100)
+                if percent != last_percent and (
+                    percent % 5 == 0 or idx == total_frames
+                ):
+                    last_percent = percent
+                    print(
+                        f"  Progress {percent}% (frame {idx}/{total_frames})",
+                        flush=True,
+                    )
 
             browser.close()
 
-    print("Encoding video...")
+    print("Encoding video...", flush=True)
     try:
-        encode_video(frames_dir, options.out_path, options.fps, options.crf, options.preset)
+        encode_video(
+            frames_dir, options.out_path, options.fps, options.crf, options.preset
+        )
     except FFmpegError as exc:
         raise RuntimeError(str(exc)) from exc
 
@@ -379,4 +425,4 @@ def render_video(options: RenderOptions) -> None:
             frame.unlink(missing_ok=True)
         frames_dir.rmdir()
 
-    print(f"Done: {options.out_path}")
+    print(f"Done: {options.out_path}", flush=True)

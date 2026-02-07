@@ -13,4 +13,27 @@ body {
   inset: 0;
 }
 
-/* Attribution now uses MapLibre's built-in control. */
+.maplibregl-ctrl-attrib {
+  max-width: 65%;
+  font-size: clamp(11px, 0.9vmin, 18px);
+  line-height: 1.2;
+}
+
+.maplibregl-ctrl-attrib a {
+  font-size: inherit;
+}
+
+.maptiler-logo {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 999;
+  display: inline-flex;
+  align-items: center;
+}
+
+.maptiler-logo img {
+  height: clamp(18px, 1.6vmin, 40px);
+  width: auto;
+  display: block;
+}
