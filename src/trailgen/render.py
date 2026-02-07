@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import tempfile
@@ -8,6 +9,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from trailgen.config import MapConfig, map_config
 from trailgen.ffmpeg import FFmpegError, encode_video
@@ -21,6 +29,8 @@ from trailgen.geo import (
 )
 from trailgen.gpx import load_gpx
 from trailgen.server import RendererServer
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -324,8 +334,7 @@ def render_video(options: RenderOptions) -> None:
         Path(__file__).resolve().parent.parent / ".." / "renderer"
     ).resolve()
 
-    print(f"Rendering {total_frames} frames to {frames_dir}...", flush=True)
-    last_percent = -1
+    logger.info("Rendering %s frames to %s...", total_frames, frames_dir)
 
     cache_dir = Path("~/.trailgen/cache").expanduser()
     debug = os.getenv("TRAILGEN_DEBUG", "").lower() in {"1", "true", "yes", "on"}
@@ -356,9 +365,12 @@ def render_video(options: RenderOptions) -> None:
             page.set_default_timeout(120_000)
             if debug:
                 page.on(
-                    "console", lambda msg: print(f"[browser {msg.type}] {msg.text}")
+                    "console",
+                    lambda msg: logger.debug("[browser %s] %s", msg.type, msg.text),
                 )
-                page.on("pageerror", lambda err: print(f"[browser error] {err}"))
+                page.on(
+                    "pageerror", lambda err: logger.warning("[browser error] %s", err)
+                )
 
                 def log_request_failed(request) -> None:
                     failure = request.failure
@@ -377,7 +389,7 @@ def render_video(options: RenderOptions) -> None:
 
                     if not error_text:
                         error_text = "request failed"
-                    print(f"[request failed] {error_text} {request.url}")
+                    logger.warning("[request failed] %s %s", error_text, request.url)
 
                 page.on("requestfailed", log_request_failed)
             page.add_init_script(f"window.__CONFIG__ = {json.dumps(renderer_cfg)};")
@@ -396,23 +408,25 @@ def render_video(options: RenderOptions) -> None:
             page.evaluate("data => window.__setRoute(data)", route_geojson)
             page.wait_for_function("window.__ROUTE_READY__ === true")
 
-            for idx, cam in enumerate(cameras, start=1):
-                page.evaluate("data => window.__renderFrame(data)", cam.__dict__)
-                frame_path = frames_dir / f"frame_{idx:06d}.png"
-                page.screenshot(path=str(frame_path))
-                percent = int((idx / total_frames) * 100)
-                if percent != last_percent and (
-                    percent % 5 == 0 or idx == total_frames
-                ):
-                    last_percent = percent
-                    print(
-                        f"  Progress {percent}% (frame {idx}/{total_frames})",
-                        flush=True,
-                    )
+            with Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("{task.percentage:>3.0f}%"),
+                TextColumn("{task.completed}/{task.total}"),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                transient=False,
+            ) as progress:
+                task_id = progress.add_task("Rendering frames", total=total_frames)
+                for idx, cam in enumerate(cameras, start=1):
+                    page.evaluate("data => window.__renderFrame(data)", cam.__dict__)
+                    frame_path = frames_dir / f"frame_{idx:06d}.png"
+                    page.screenshot(path=str(frame_path))
+                    progress.update(task_id, advance=1)
 
             browser.close()
 
-    print("Encoding video...", flush=True)
+    logger.info("Encoding video...")
     try:
         encode_video(
             frames_dir, options.out_path, options.fps, options.crf, options.preset
@@ -425,4 +439,4 @@ def render_video(options: RenderOptions) -> None:
             frame.unlink(missing_ok=True)
         frames_dir.rmdir()
 
-    print(f"Done: {options.out_path}", flush=True)
+    logger.info("Done: %s", options.out_path)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 import time
@@ -10,6 +11,8 @@ import urllib.request
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class RendererServer:
@@ -176,12 +179,19 @@ class RendererServer:
                         status = resp.status
                 except urllib.error.HTTPError as exc:
                     if debug:
-                        print(f"[tile proxy] HTTP {exc.code} {exc.reason} for {target}")
+                        logger.warning(
+                            "[tile proxy] HTTP %s %s for %s",
+                            exc.code,
+                            exc.reason,
+                            target,
+                        )
                     self.send_error(exc.code, exc.reason)
                     return
                 except Exception as exc:
                     if debug:
-                        print(f"[tile proxy] Failed to fetch {target}: {exc}")
+                        logger.warning(
+                            "[tile proxy] Failed to fetch %s: %s", target, exc
+                        )
                     self.send_error(HTTPStatus.BAD_GATEWAY, "Failed to fetch tile")
                     return
 
