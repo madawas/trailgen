@@ -22,13 +22,11 @@ class RendererServer:
         raster_upstream: str | None,
         terrain_upstream: str | None,
         cache_dir: Path,
-        debug: bool = False,
     ):
         self._renderer_dir = renderer_dir
         self._raster_upstream = raster_upstream
         self._terrain_upstream = terrain_upstream
         self._cache_dir = cache_dir
-        self._debug = debug
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.port: int | None = None
@@ -83,7 +81,6 @@ class RendererServer:
         raster_upstream = self._raster_upstream
         terrain_upstream = self._terrain_upstream
         cache_dir = self._cache_dir
-        debug = self._debug
         cache_max_bytes = 2 * 1024 * 1024 * 1024
 
         class Handler(BaseHTTPRequestHandler):
@@ -178,20 +175,16 @@ class RendererServer:
                         )
                         status = resp.status
                 except urllib.error.HTTPError as exc:
-                    if debug:
-                        logger.warning(
-                            "[tile proxy] HTTP %s %s for %s",
-                            exc.code,
-                            exc.reason,
-                            target,
-                        )
+                    logger.debug(
+                        "[tile proxy] HTTP %s %s for %s",
+                        exc.code,
+                        exc.reason,
+                        target,
+                    )
                     self.send_error(exc.code, exc.reason)
                     return
                 except Exception as exc:
-                    if debug:
-                        logger.warning(
-                            "[tile proxy] Failed to fetch %s: %s", target, exc
-                        )
+                    logger.debug("[tile proxy] Failed to fetch %s: %s", target, exc)
                     self.send_error(HTTPStatus.BAD_GATEWAY, "Failed to fetch tile")
                     return
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -337,14 +336,13 @@ def render_video(options: RenderOptions) -> None:
     logger.info("Rendering %s frames to %s...", total_frames, frames_dir)
 
     cache_dir = Path("~/.trailgen/cache").expanduser()
-    debug = os.getenv("TRAILGEN_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+    debug = logger.isEnabledFor(logging.DEBUG)
 
     with RendererServer(
         renderer_dir,
         map_cfg.raster_tiles,
         map_cfg.terrain_tiles,
         cache_dir=cache_dir,
-        debug=debug,
     ) as server:
         if server.raster_url_template:
             renderer_cfg["rasterTiles"] = server.raster_url_template
@@ -369,7 +367,7 @@ def render_video(options: RenderOptions) -> None:
                     lambda msg: logger.debug("[browser %s] %s", msg.type, msg.text),
                 )
                 page.on(
-                    "pageerror", lambda err: logger.warning("[browser error] %s", err)
+                    "pageerror", lambda err: logger.debug("[browser error] %s", err)
                 )
 
                 def log_request_failed(request) -> None:
@@ -389,7 +387,7 @@ def render_video(options: RenderOptions) -> None:
 
                     if not error_text:
                         error_text = "request failed"
-                    logger.warning("[request failed] %s %s", error_text, request.url)
+                    logger.debug("[request failed] %s %s", error_text, request.url)
 
                 page.on("requestfailed", log_request_failed)
             page.add_init_script(f"window.__CONFIG__ = {json.dumps(renderer_cfg)};")

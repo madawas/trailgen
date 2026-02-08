@@ -15,6 +15,28 @@ RESOLUTION_DIMENSIONS = {
     "4k": (3840, 2160),
 }
 
+_DEBUG_VALUES = {"1", "true", "yes", "on"}
+
+
+def _parse_log_level(value: str | None) -> int | None:
+    if not value:
+        return None
+    level = logging.getLevelName(value.upper())
+    return level if isinstance(level, int) else None
+
+
+def configure_logging() -> None:
+    level = _parse_log_level(os.getenv("TRAILGEN_LOG_LEVEL"))
+    if level is None:
+        debug = os.getenv("TRAILGEN_DEBUG", "").lower() in _DEBUG_VALUES
+        level = logging.DEBUG if debug else logging.INFO
+
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
+
 
 def resolve_dimensions(
     args: argparse.Namespace, parser: argparse.ArgumentParser
@@ -184,11 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     load_dotenv()
-    debug = os.getenv("TRAILGEN_DEBUG", "").lower() in {"1", "true", "yes", "on"}
-    logging.basicConfig(
-        level=logging.DEBUG if debug else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    configure_logging()
     parser = build_parser()
     args = parser.parse_args()
 
