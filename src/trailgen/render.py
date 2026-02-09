@@ -16,18 +16,23 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from trailgen.camera_auto import (
+    AutoCameraConfig,
+    FreeCameraFrame,
+    build_auto_camera_frames,
+)
 from trailgen.config import MapConfig, map_config
 from trailgen.ffmpeg import FFmpegError, encode_video
 from trailgen.geo import (
-    bearing_deg,
+    RoutePoint,
     chaikin_smooth,
     cumulative_distances,
-    interpolate_along_route,
     resample_by_distance,
     to_route_points,
 )
 from trailgen.gpx import load_gpx
 from trailgen.server import RendererServer
+from trailgen.terrain import TerrainSampler, select_dem_zoom
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +46,10 @@ class RenderOptions:
     height: int
     duration: float | None
     speed_kmh: float
-    zoom: float
-    pitch: float
-    bearing_offset: float
+    quality: str
+    lookahead_m: float | None
     intro_seconds: float
     outro_seconds: float
-    orbit_degrees: float
-    zoom_out: float
-    pitch_drop: float
-    lookahead_m: float
-    smooth_factor: float
     route_smooth: int
     route_color: str
     route_width: float
@@ -58,15 +57,6 @@ class RenderOptions:
     keep_frames: bool
     crf: int
     preset: str
-
-
-@dataclass(frozen=True)
-class FrameCamera:
-    center: list[float]
-    bearing: float
-    pitch: float
-    zoom: float
-    progress: float
 
 
 def _build_route_geojson(route: list[tuple[float, float]]) -> dict:
@@ -82,136 +72,6 @@ def _build_route_geojson(route: list[tuple[float, float]]) -> dict:
     }
 
 
-def _ease_in_out(t: float) -> float:
-    return t * t * (3 - 2 * t)
-
-
-def _follow_route_frames(
-    route_points,
-    distances,
-    total_distance,
-    frames,
-    pitch,
-    zoom,
-    bearing_offset,
-    lookahead_m,
-):
-    cameras: list[FrameCamera] = []
-    for frame in range(frames):
-        t = frame / (frames - 1) if frames > 1 else 0.0
-        target_m = t * total_distance
-        next_target = min(total_distance, target_m + lookahead_m)
-
-        curr = interpolate_along_route(route_points, distances, target_m)
-        nxt = interpolate_along_route(route_points, distances, next_target)
-
-        bearing = bearing_deg(curr, nxt) + bearing_offset
-        cameras.append(
-            FrameCamera(
-                center=[curr.lon, curr.lat],
-                bearing=bearing % 360.0,
-                pitch=pitch,
-                zoom=zoom,
-                progress=target_m / total_distance,
-            )
-        )
-    return cameras
-
-
-def _intro_frames(
-    start_point,
-    frames,
-    base_bearing,
-    pitch,
-    zoom,
-    orbit_degrees,
-    zoom_out,
-    pitch_drop,
-):
-    if frames <= 0:
-        return []
-
-    zoom_start = max(0.0, zoom - zoom_out)
-    pitch_start = max(0.0, pitch - pitch_drop)
-    cameras: list[FrameCamera] = []
-    for idx in range(frames):
-        t = _ease_in_out((idx + 1) / frames)
-        bearing = (base_bearing + orbit_degrees * (1 - t)) % 360.0
-        cameras.append(
-            FrameCamera(
-                center=[start_point.lon, start_point.lat],
-                bearing=bearing,
-                pitch=pitch_start + (pitch - pitch_start) * t,
-                zoom=zoom_start + (zoom - zoom_start) * t,
-                progress=0.0,
-            )
-        )
-    return cameras
-
-
-def _outro_frames(
-    end_point,
-    frames,
-    base_bearing,
-    pitch,
-    zoom,
-    orbit_degrees,
-    zoom_out,
-    pitch_drop,
-):
-    if frames <= 0:
-        return []
-
-    zoom_end = max(0.0, zoom - zoom_out)
-    pitch_end = max(0.0, pitch - pitch_drop)
-    cameras: list[FrameCamera] = []
-    for idx in range(frames):
-        t = _ease_in_out((idx + 1) / frames)
-        bearing = (base_bearing + orbit_degrees * t) % 360.0
-        cameras.append(
-            FrameCamera(
-                center=[end_point.lon, end_point.lat],
-                bearing=bearing,
-                pitch=pitch + (pitch_end - pitch) * t,
-                zoom=zoom + (zoom_end - zoom) * t,
-                progress=1.0,
-            )
-        )
-    return cameras
-
-
-def _smooth_follow_frames(
-    frames: list[FrameCamera], factor: float
-) -> list[FrameCamera]:
-    if not frames:
-        return frames
-
-    alpha = min(1.0, max(0.01, factor))
-    x = math.cos(math.radians(frames[0].bearing))
-    y = math.sin(math.radians(frames[0].bearing))
-    smooth_bearing = frames[0].bearing
-
-    smoothed: list[FrameCamera] = []
-    for frame in frames:
-        bx = math.cos(math.radians(frame.bearing))
-        by = math.sin(math.radians(frame.bearing))
-        x = x * (1 - alpha) + bx * alpha
-        y = y * (1 - alpha) + by * alpha
-        smooth_bearing = (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
-
-        smoothed.append(
-            FrameCamera(
-                center=frame.center,
-                bearing=smooth_bearing,
-                pitch=frame.pitch,
-                zoom=frame.zoom,
-                progress=frame.progress,
-            )
-        )
-
-    return smoothed
-
-
 def _ensure_frames_dir(target: Path | None) -> Path:
     if target:
         target.mkdir(parents=True, exist_ok=True)
@@ -219,7 +79,17 @@ def _ensure_frames_dir(target: Path | None) -> Path:
     return Path(tempfile.mkdtemp(prefix="trailgen_frames_"))
 
 
-def _build_renderer_config(map_cfg: MapConfig, options: RenderOptions, start_center):
+def _build_renderer_config(
+    map_cfg: MapConfig,
+    options: RenderOptions,
+    start_center,
+    initial_zoom: float,
+    initial_pitch: float,
+    max_zoom: float,
+    frame_wait: str,
+    frame_delay_ms: int,
+    frame_timeout_ms: int,
+):
     return {
         "styleUrl": map_cfg.style_url,
         "styleAttribution": map_cfg.style_attribution,
@@ -228,14 +98,19 @@ def _build_renderer_config(map_cfg: MapConfig, options: RenderOptions, start_cen
         "terrainTiles": map_cfg.terrain_tiles,
         "terrainAttribution": map_cfg.terrain_attribution,
         "terrainEncoding": map_cfg.terrain_encoding,
+        "terrainExaggeration": map_cfg.terrain_exaggeration,
         "blankStyle": map_cfg.blank_style,
         "routeColor": options.route_color,
         "routeWidth": options.route_width,
         "width": options.width,
         "height": options.height,
         "initialCenter": start_center,
-        "initialZoom": options.zoom,
-        "pitch": options.pitch,
+        "initialZoom": initial_zoom,
+        "pitch": initial_pitch,
+        "maxZoom": max_zoom,
+        "frameWait": frame_wait,
+        "frameDelayMs": frame_delay_ms,
+        "frameTimeoutMs": frame_timeout_ms,
     }
 
 
@@ -269,64 +144,117 @@ def render_video(options: RenderOptions) -> None:
         intro_frames = int(intro_frames * scale)
         outro_frames = int(outro_frames * scale)
 
-    main_frames = max(2, total_frames - intro_frames - outro_frames)
-
     route_coords = [[p.lon, p.lat] for p in route_points]
     route_geojson = _build_route_geojson(route_coords)
 
     map_cfg = map_config()
     scale = options.height / 1280.0
     scaled_route_width = max(1.0, options.route_width * scale)
-    zoom_effective = min(14.0, options.zoom + math.log2(scale))
+    initial_zoom = max(2.0, min(16.0, 12.0 + math.log2(scale)))
+    initial_pitch = 60.0
 
-    renderer_cfg = _build_renderer_config(map_cfg, options, route_coords[0])
+    quality = options.quality.lower()
+    if quality not in {"preview", "final"}:
+        raise ValueError(f"Unknown quality preset: {options.quality}")
+
+    auto_params = {
+        "side_offset_m": 400.0,
+        "back_offset_m": 260.0,
+        "base_clearance_m": 220.0,
+        "lookahead_m": 320.0,
+        "relief_factor": 0.35,
+        "summit_boost_m": 220.0,
+        "relief_window_m": 900.0,
+        "summit_sigma_m": 450.0,
+    }
+    dem_zoom_bias = -2
+    device_scale_factor = 1.0
+    if quality == "preview":
+        max_zoom = 14.0
+        frame_wait = "render"
+        frame_delay_ms = 150
+        frame_timeout_ms = 6000
+    else:
+        max_zoom = 14.0
+        frame_wait = "idle"
+        frame_delay_ms = 0
+        frame_timeout_ms = 20000
+        device_scale_factor = 2.0
+
+    renderer_cfg = _build_renderer_config(
+        map_cfg,
+        options,
+        route_coords[0],
+        initial_zoom,
+        initial_pitch,
+        max_zoom=max_zoom,
+        frame_wait=frame_wait,
+        frame_delay_ms=frame_delay_ms,
+        frame_timeout_ms=frame_timeout_ms,
+    )
     renderer_cfg["routeWidth"] = scaled_route_width
-    renderer_cfg["initialZoom"] = zoom_effective
+    renderer_cfg["initialZoom"] = initial_zoom
 
-    start_bearing = (
-        bearing_deg(route_points[0], route_points[1]) + options.bearing_offset
-    )
-    end_bearing = (
-        bearing_deg(route_points[-2], route_points[-1]) + options.bearing_offset
-    )
+    cache_dir = Path("~/.trailgen/cache").expanduser()
 
-    cameras = []
-    cameras.extend(
-        _intro_frames(
-            route_points[0],
-            intro_frames,
-            start_bearing,
-            options.pitch,
-            zoom_effective,
-            options.orbit_degrees,
-            options.zoom_out,
-            options.pitch_drop,
+    cameras: list[FreeCameraFrame] = []
+    if map_cfg.terrain_tiles:
+        avg_lat = sum(p.lat for p in route_points) / len(route_points)
+        base_dem_zoom = select_dem_zoom(avg_lat)
+        dem_zoom = max(8, min(14, base_dem_zoom + dem_zoom_bias))
+        terrain = TerrainSampler(
+            map_cfg.terrain_tiles,
+            map_cfg.terrain_encoding or "mapbox",
+            cache_dir=cache_dir,
+            zoom=dem_zoom,
+            exaggeration=map_cfg.terrain_exaggeration or 1.0,
         )
-    )
-    follow_frames = _follow_route_frames(
-        route_points,
-        distances,
-        total_distance,
-        main_frames,
-        options.pitch,
-        zoom_effective,
-        options.bearing_offset,
-        options.lookahead_m,
-    )
-    follow_frames = _smooth_follow_frames(follow_frames, options.smooth_factor)
-    cameras.extend(follow_frames)
-    cameras.extend(
-        _outro_frames(
-            route_points[-1],
-            outro_frames,
-            end_bearing,
-            options.pitch,
-            zoom_effective,
-            options.orbit_degrees,
-            options.zoom_out,
-            options.pitch_drop,
+
+        elevations = [p.ele for p in route_points]
+        if max(elevations) - min(elevations) < 5.0:
+            sampled = []
+            for pt in route_points:
+                height = terrain.height_at(pt.lon, pt.lat)
+                sampled.append(height if height is not None else pt.ele)
+            elevations = sampled
+            route_points = [
+                RoutePoint(pt.lat, pt.lon, elevations[idx])
+                for idx, pt in enumerate(route_points)
+            ]
+
+        summit_idx = max(range(len(elevations)), key=lambda idx: elevations[idx])
+        summit_distance = distances[summit_idx]
+
+        lookahead_m = (
+            options.lookahead_m
+            if options.lookahead_m is not None
+            else auto_params["lookahead_m"]
         )
-    )
+        auto_cfg = AutoCameraConfig(
+            fps=options.fps,
+            intro_frames=intro_frames,
+            outro_frames=outro_frames,
+            total_frames=total_frames,
+            lookahead_m=lookahead_m,
+            side_offset_m=auto_params["side_offset_m"],
+            back_offset_m=auto_params["back_offset_m"],
+            base_clearance_m=auto_params["base_clearance_m"],
+            relief_factor=auto_params["relief_factor"],
+            summit_boost_m=auto_params["summit_boost_m"],
+            relief_window_m=auto_params["relief_window_m"],
+            summit_sigma_m=auto_params["summit_sigma_m"],
+        )
+        cameras = build_auto_camera_frames(
+            route_points,
+            distances,
+            total_distance,
+            auto_cfg,
+            terrain,
+            summit_distance,
+            elevations,
+        )
+    else:
+        raise RuntimeError("Terrain tiles are required for auto camera mode.")
 
     frames_dir = _ensure_frames_dir(options.frames_dir)
     renderer_dir = (
@@ -335,7 +263,6 @@ def render_video(options: RenderOptions) -> None:
 
     logger.info("Rendering %s frames to %s...", total_frames, frames_dir)
 
-    cache_dir = Path("~/.trailgen/cache").expanduser()
     debug = logger.isEnabledFor(logging.DEBUG)
 
     with RendererServer(
@@ -358,7 +285,8 @@ def render_video(options: RenderOptions) -> None:
                 ]
             )
             page = browser.new_page(
-                viewport={"width": options.width, "height": options.height}
+                viewport={"width": options.width, "height": options.height},
+                device_scale_factor=device_scale_factor,
             )
             page.set_default_timeout(120_000)
             if debug:
@@ -419,7 +347,14 @@ def render_video(options: RenderOptions) -> None:
                 for idx, cam in enumerate(cameras, start=1):
                     page.evaluate("data => window.__renderFrame(data)", cam.__dict__)
                     frame_path = frames_dir / f"frame_{idx:06d}.png"
-                    page.screenshot(path=str(frame_path))
+                    screenshot_kwargs = {"path": str(frame_path)}
+                    if device_scale_factor > 1.0:
+                        screenshot_kwargs["scale"] = "css"
+                    try:
+                        page.screenshot(**screenshot_kwargs)
+                    except TypeError:
+                        screenshot_kwargs.pop("scale", None)
+                        page.screenshot(**screenshot_kwargs)
                     progress.update(task_id, advance=1)
 
             browser.close()
