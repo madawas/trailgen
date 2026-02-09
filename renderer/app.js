@@ -21,6 +21,7 @@
       style,
       center: cfg.initialCenter || [0, 0],
       zoom: cfg.initialZoom || 3,
+      maxZoom: cfg.maxZoom ?? 16,
       pitch: cfg.pitch ?? 60,
       bearing: 0,
       antialias: true,
@@ -45,7 +46,10 @@
         });
 
         if (typeof map.setTerrain === "function") {
-          map.setTerrain({ source: "terrain-dem", exaggeration: 1.2 });
+          map.setTerrain({
+            source: "terrain-dem",
+            exaggeration: cfg.terrainExaggeration ?? 1.2,
+          });
 
           map.addLayer({
             id: "sky",
@@ -164,13 +168,63 @@
 
   window.__renderFrame = (camera) => {
     return new Promise((resolve) => {
-      map.once("idle", () => resolve(true));
-      map.jumpTo({
-        center: camera.center,
-        zoom: camera.zoom,
-        bearing: camera.bearing,
-        pitch: camera.pitch,
+      const timeoutMs = cfg.frameTimeoutMs ?? 15000;
+      const waitEvent = cfg.frameWait ?? "idle";
+      const delayMs = cfg.frameDelayMs ?? 0;
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve(true);
+      };
+      const finishWithDelay = () => {
+        if (delayMs > 0) {
+          window.setTimeout(finish, delayMs);
+        } else {
+          finish();
+        }
+      };
+      const timeout = window.setTimeout(finish, timeoutMs);
+      map.once(waitEvent, () => {
+        window.clearTimeout(timeout);
+        finishWithDelay();
       });
+      if (camera && camera.free && camera.position && typeof map.setFreeCameraOptions === "function") {
+        const opts = map.getFreeCameraOptions();
+        const altitude = camera.altitude ?? 0;
+        opts.position = maplibregl.MercatorCoordinate.fromLngLat(camera.position, altitude);
+        if (camera.target && typeof opts.lookAtPoint === "function") {
+          opts.lookAtPoint(camera.target);
+        } else if (typeof opts.setPitchBearing === "function") {
+          if (typeof camera.pitch === "number" && typeof camera.bearing === "number") {
+            opts.setPitchBearing(camera.pitch, camera.bearing);
+          }
+        }
+        map.setFreeCameraOptions(opts);
+      } else if (camera && camera.position && camera.target && typeof map.calculateCameraOptionsFromTo === "function") {
+        const from = new maplibregl.LngLat(camera.position[0], camera.position[1]);
+        const to = new maplibregl.LngLat(camera.target[0], camera.target[1]);
+        const opts = map.calculateCameraOptionsFromTo(
+          from,
+          camera.altitude ?? 0,
+          to,
+          0
+        );
+        map.jumpTo({
+          center: opts.center,
+          zoom: opts.zoom,
+          bearing: opts.bearing,
+          pitch: opts.pitch,
+        });
+      } else {
+        map.jumpTo({
+          center: camera.center,
+          zoom: camera.zoom,
+          bearing: camera.bearing,
+          pitch: camera.pitch,
+        });
+      }
+      map.triggerRepaint();
       if (typeof camera.progress === "number") {
         const progress = Math.min(1, Math.max(0, camera.progress));
         const gradient = [

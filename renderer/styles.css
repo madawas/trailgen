@@ -14,9 +14,10 @@ body {
 }
 
 .maplibregl-ctrl-attrib {
-  max-width: 65%;
-  font-size: clamp(11px, 0.9vmin, 18px);
+  max-width: 90vw;
+  font-size: clamp(12px, 1.2vmin, 24px);
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .maplibregl-ctrl-attrib a {
@@ -33,7 +34,7 @@ body {
 }
 
 .maptiler-logo img {
-  height: clamp(18px, 1.6vmin, 40px);
+  height: clamp(28px, 2.6vmin, 60px);
   width: auto;
   display: block;
 }

@@ -27,6 +27,12 @@ class RendererServer:
         self._raster_upstream = raster_upstream
         self._terrain_upstream = terrain_upstream
         self._cache_dir = cache_dir
+        self._raster_ext = (
+            self._infer_extension(raster_upstream) if raster_upstream else "png"
+        )
+        self._terrain_ext = (
+            self._infer_extension(terrain_upstream) if terrain_upstream else "png"
+        )
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.port: int | None = None
@@ -41,13 +47,13 @@ class RendererServer:
     def raster_url_template(self) -> str | None:
         if not self._raster_upstream:
             return None
-        return f"{self.base_url}/tiles/raster/{{z}}/{{x}}/{{y}}.png"
+        return f"{self.base_url}/tiles/raster/{{z}}/{{x}}/{{y}}.{self._raster_ext}"
 
     @property
     def terrain_url_template(self) -> str | None:
         if not self._terrain_upstream:
             return None
-        return f"{self.base_url}/tiles/terrain/{{z}}/{{x}}/{{y}}.png"
+        return f"{self.base_url}/tiles/terrain/{{z}}/{{x}}/{{y}}.{self._terrain_ext}"
 
     def __enter__(self) -> "RendererServer":
         self.start()
@@ -203,6 +209,14 @@ class RendererServer:
                 self.wfile.write(payload)
 
         return Handler
+
+    @staticmethod
+    def _infer_extension(url: str) -> str:
+        parsed = urllib.parse.urlparse(url)
+        suffix = Path(parsed.path).suffix
+        if suffix:
+            return suffix.lstrip(".")
+        return "png"
 
     @staticmethod
     def _enforce_cache_limit(cache_dir: Path, max_bytes: int) -> None:

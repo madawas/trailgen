@@ -20,6 +20,7 @@ class MapConfig:
     terrain_tiles: str | None
     terrain_attribution: str | None
     terrain_encoding: str | None
+    terrain_exaggeration: float | None
     blank_style: bool = False
 
 
@@ -36,4 +37,5 @@ def map_config() -> MapConfig:
         terrain_tiles=MAPTILER_TERRAIN_TILES.format(key=key),
         terrain_attribution=None,
         terrain_encoding=MAPTILER_TERRAIN_ENCODING,
+        terrain_exaggeration=1.2,
     )

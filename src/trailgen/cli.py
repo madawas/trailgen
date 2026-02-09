@@ -94,34 +94,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Target video duration in seconds. Overrides --speed-kmh if set.",
     )
     render.add_argument(
-        "--speed-kmh",
-        type=float,
-        default=20.0,
-        help="Route speed in km/h for computing duration.",
-    )
-    render.add_argument(
-        "--zoom",
-        type=float,
-        default=14.0,
-        help="Camera zoom level.",
-    )
-    render.add_argument(
-        "--pitch",
-        type=float,
-        default=60.0,
-        help="Camera pitch angle in degrees.",
+        "--quality",
+        choices=["preview", "final"],
+        default="final",
+        help="Quality preset (preview renders faster, final renders with full tiles).",
     )
     render.add_argument(
         "--lookahead-m",
         type=float,
-        default=100.0,
-        help="Lookahead distance in meters for camera bearing.",
+        default=None,
+        help="Override auto camera lookahead distance in meters.",
     )
     render.add_argument(
-        "--smooth-factor",
+        "--speed-kmh",
         type=float,
-        default=0.05,
-        help="Camera bearing smoothing factor (0-1). Higher = less smoothing.",
+        default=20.0,
+        help="Route speed in km/h for computing duration.",
     )
     render.add_argument(
         "--route-smooth",
@@ -142,12 +130,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Route line width.",
     )
     render.add_argument(
-        "--bearing-offset",
-        type=float,
-        default=0.0,
-        help="Extra degrees to add to the route bearing.",
-    )
-    render.add_argument(
         "--intro-seconds",
         type=float,
         default=2.5,
@@ -160,24 +142,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Outro fly-out duration in seconds.",
     )
     render.add_argument(
-        "--orbit-deg",
-        type=float,
-        default=110.0,
-        help="Degrees to orbit during intro/outro.",
-    )
-    render.add_argument(
-        "--zoom-out",
-        type=float,
-        default=1.8,
-        help="Zoom-out amount for fly-in/out.",
-    )
-    render.add_argument(
-        "--pitch-drop",
-        type=float,
-        default=15.0,
-        help="Pitch drop amount for fly-in/out.",
-    )
-    render.add_argument(
         "--frames-dir",
         type=Path,
         default=None,
@@ -187,6 +151,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-frames",
         action="store_true",
         help="Keep frame PNGs after encoding.",
+        default=False,
     )
     render.add_argument(
         "--crf",
@@ -220,16 +185,10 @@ def main() -> None:
             height=height,
             duration=args.duration,
             speed_kmh=args.speed_kmh,
-            zoom=args.zoom,
-            pitch=args.pitch,
-            bearing_offset=args.bearing_offset,
+            quality=args.quality,
+            lookahead_m=args.lookahead_m,
             intro_seconds=args.intro_seconds,
             outro_seconds=args.outro_seconds,
-            orbit_degrees=args.orbit_deg,
-            zoom_out=args.zoom_out,
-            pitch_drop=args.pitch_drop,
-            lookahead_m=args.lookahead_m,
-            smooth_factor=args.smooth_factor,
             route_smooth=args.route_smooth,
             route_color=args.route_color,
             route_width=args.route_width,
