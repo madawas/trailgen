@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from trailgen.camera_auto import (
+from .auto import (
     FreeCameraFrame,
     _intro_transition,
     _outro_transition,

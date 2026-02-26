@@ -20,7 +20,9 @@ def _iter_points(gpx: gpxpy.gpx.GPX) -> Iterable[GeoPoint]:
     for track in gpx.tracks:
         for segment in track.segments:
             for point in segment.points:
-                yield GeoPoint(point.latitude, point.longitude, point.elevation, point.time)
+                yield GeoPoint(
+                    point.latitude, point.longitude, point.elevation, point.time
+                )
 
     for route in gpx.routes:
         for point in route.points:

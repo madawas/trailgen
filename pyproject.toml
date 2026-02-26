@@ -23,7 +23,7 @@ dev = [
 ]
 
 [project.scripts]
-trailgen = "trailgen.cli:main"
+trailgen = "trailgen.cli.main:main"
 
 [tool.setuptools.package-dir]
 "" = "src"

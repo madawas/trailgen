@@ -16,14 +16,14 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
-from trailgen.camera_auto import (
+from trailgen.camera import (
     AutoCameraConfig,
     FreeCameraFrame,
     build_auto_camera_frames,
+    FollowCameraConfig,
+    build_follow_camera_frames,
 )
-from trailgen.camera_follow import FollowCameraConfig, build_follow_camera_frames
 from trailgen.config import MapConfig, map_config
-from trailgen.ffmpeg import FFmpegError, encode_video
 from trailgen.geo import (
     RoutePoint,
     chaikin_smooth,
@@ -31,9 +31,11 @@ from trailgen.geo import (
     resample_by_distance,
     to_route_points,
 )
-from trailgen.gpx import load_gpx
-from trailgen.server import RendererServer
+from trailgen.geo import load_gpx
 from trailgen.terrain import TerrainSampler, select_dem_zoom
+
+from .ffmpeg import FFmpegError, encode_video
+from .server import RendererServer
 
 logger = logging.getLogger(__name__)
 
@@ -296,9 +298,7 @@ def render_video(options: RenderOptions) -> None:
         raise RuntimeError("Terrain tiles are required for camera rendering.")
 
     frames_dir = _ensure_frames_dir(options.frames_dir)
-    renderer_dir = (
-        Path(__file__).resolve().parent.parent / ".." / "renderer"
-    ).resolve()
+    renderer_dir = (Path(__file__).resolve().parents[3] / "renderer").resolve()
 
     logger.info("Rendering %s frames to %s...", total_frames, frames_dir)
 
