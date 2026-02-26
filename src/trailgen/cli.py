@@ -112,6 +112,54 @@ def build_parser() -> argparse.ArgumentParser:
         help="Route speed in km/h for computing duration.",
     )
     render.add_argument(
+        "--camera-mode",
+        choices=["auto", "follow"],
+        default="auto",
+        help="Camera mode (auto for adaptive, follow for fixed distance/pitch).",
+    )
+    render.add_argument(
+        "--follow-distance-m",
+        type=float,
+        default=500.0,
+        help="Follow mode camera distance from target (meters).",
+    )
+    render.add_argument(
+        "--follow-pitch",
+        type=float,
+        default=60.0,
+        help="Follow mode camera pitch in degrees (0=top-down, 60=oblique).",
+    )
+    render.add_argument(
+        "--follow-lookahead-m",
+        type=float,
+        default=120.0,
+        help="Follow mode lookahead distance for bearing (meters).",
+    )
+    render.add_argument(
+        "--follow-bearing-sensitivity",
+        type=float,
+        default=3.0,
+        help="Follow mode bearing responsiveness (higher = more reactive).",
+    )
+    render.add_argument(
+        "--follow-panning-sensitivity",
+        type=float,
+        default=1.5,
+        help="Follow mode target responsiveness (higher = more reactive).",
+    )
+    render.add_argument(
+        "--follow-smoothing-s",
+        type=float,
+        default=0.5,
+        help="Follow mode smoothing window in seconds.",
+    )
+    render.add_argument(
+        "--follow-min-clearance-m",
+        type=float,
+        default=30.0,
+        help="Minimum camera clearance above terrain in follow mode (meters).",
+    )
+    render.add_argument(
         "--route-smooth",
         type=int,
         default=1,
@@ -196,6 +244,14 @@ def main() -> None:
             keep_frames=args.keep_frames,
             crf=args.crf,
             preset=args.preset,
+            camera_mode=args.camera_mode,
+            follow_distance_m=args.follow_distance_m,
+            follow_pitch_deg=args.follow_pitch,
+            follow_lookahead_m=args.follow_lookahead_m,
+            follow_bearing_sensitivity=args.follow_bearing_sensitivity,
+            follow_panning_sensitivity=args.follow_panning_sensitivity,
+            follow_smoothing_s=args.follow_smoothing_s,
+            follow_min_clearance_m=args.follow_min_clearance_m,
         )
         render_video(options)
 

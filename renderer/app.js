@@ -1,6 +1,31 @@
 (() => {
   const cfg = window.__CONFIG__ || {};
   const mapContainer = document.getElementById("map");
+  const mapboxToken = cfg.mapboxToken;
+
+  const maptilerLogo = document.querySelector(".maptiler-logo");
+  if (maptilerLogo && cfg.mapProvider && cfg.mapProvider !== "maptiler") {
+    maptilerLogo.style.display = "none";
+  }
+
+  const transformRequest = mapboxToken
+    ? (url) => {
+        if (url.startsWith("mapbox://")) {
+          const mapped = mapboxToHttp(url, mapboxToken);
+          if (mapped) {
+            return { url: mapped };
+          }
+        }
+        if (
+          (url.includes("api.mapbox.com") || url.includes("tiles.mapbox.com")) &&
+          !url.includes("access_token=")
+        ) {
+          const separator = url.includes("?") ? "&" : "?";
+          return { url: `${url}${separator}access_token=${mapboxToken}` };
+        }
+        return null;
+      }
+    : undefined;
 
   function fail(error) {
     window.__ERROR__ = error?.message || String(error || "Renderer failed to initialize.");
@@ -26,6 +51,7 @@
       bearing: 0,
       antialias: true,
       attributionControl: false,
+      transformRequest,
     });
 
     map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
@@ -129,6 +155,26 @@
         },
       ],
     };
+  }
+
+  function mapboxToHttp(url, token) {
+    if (url.startsWith("mapbox://sprites/")) {
+      const path = url.replace("mapbox://sprites/", "");
+      return `https://api.mapbox.com/styles/v1/${path}/sprite?access_token=${token}`;
+    }
+    if (url.startsWith("mapbox://fonts/")) {
+      const path = url.replace("mapbox://fonts/", "");
+      return `https://api.mapbox.com/fonts/v1/${path}?access_token=${token}`;
+    }
+    if (url.startsWith("mapbox://styles/")) {
+      const path = url.replace("mapbox://styles/", "");
+      return `https://api.mapbox.com/styles/v1/${path}?access_token=${token}`;
+    }
+    if (url.startsWith("mapbox://")) {
+      const tileset = url.replace("mapbox://", "");
+      return `https://api.mapbox.com/v4/${tileset}.json?secure&access_token=${token}`;
+    }
+    return null;
   }
 
   function addRouteLayer(geojson) {

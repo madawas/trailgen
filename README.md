@@ -11,11 +11,20 @@ uv venv
 uv pip install -e ".[dev]"
 ```
 
-2. Add your MapTiler API key in `.env`:
+2. Add your map provider credentials in `.env`:
 
 ```bash
-# MapTiler (required)
+# MapTiler (default)
 MAPTILER_KEY=your_key_here
+# Optional: terrain exaggeration (MapDirector uses ~1.5)
+# MAP_TERRAIN_EXAGGERATION=1.5
+
+# Mapbox (optional, MapDirector-like satellite labels)
+# MAP_PROVIDER=mapbox
+# MAPBOX_TOKEN=your_token_here
+# MAPBOX_STYLE_URL=https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12?access_token={token}
+# MAPBOX_TERRAIN_TILES=https://api.mapbox.com/raster/v1/mapbox.mapbox-terrain-dem-v1/{z}/{x}/{y}.png?access_token={token}
+# MAP_MAX_ZOOM=18
 ```
 
 3. Install Playwright browser binaries (one-time):
@@ -60,7 +69,19 @@ uv run trailgen render --gpx /path/to/route.gpx --out outputs/route-4k.mp4 --fps
 
 ## Maps
 
-The renderer uses MapTiler's `hybrid-v4` style by default and a terrain DEM for 3D relief.
+The renderer uses MapTiler's `hybrid-v4` style by default and a terrain DEM for 3D relief. To match MapDirector's look, switch to Mapbox:
+
+```bash
+MAP_PROVIDER=mapbox
+MAPBOX_TOKEN=your_token_here
+MAP_MAX_ZOOM=18
+```
+
+If you have access to the MapDirector style, you can set:
+
+```bash
+MAPBOX_STYLE_URL=https://api.mapbox.com/styles/v1/brunomapdirector/cm7uf30u5019501s21cdtbe2c?access_token={token}
+```
 
 ## Route Styling
 
@@ -77,6 +98,19 @@ uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --route-
 - Use `--frames-dir` to direct frames to a specific folder.
 - Fly-in/out tuning options: `--intro-seconds`, `--outro-seconds`, `--orbit-deg`, `--zoom-out`, `--pitch-drop`.
 - The renderer serves a local HTTP page and proxies tiles to avoid CORS issues with tile requests.
+
+## Camera Modes
+
+Use `--camera-mode auto` (default) for adaptive terrain-aware framing, or `--camera-mode follow` to match a fixed distance/pitch style (similar to MapDirector).
+
+Example follow mode:
+
+```bash
+uv run trailgen render --gpx /path/to/route.gpx --out outputs/route-follow.mp4 \\
+  --camera-mode follow --follow-distance-m 500 --follow-pitch 60 \\
+  --follow-lookahead-m 120 --follow-bearing-sensitivity 3 \\
+  --follow-panning-sensitivity 1.5 --follow-smoothing-s 0.5
+```
 
 ## Troubleshooting
 
