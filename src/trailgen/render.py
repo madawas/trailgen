@@ -21,6 +21,7 @@ from trailgen.camera_auto import (
     FreeCameraFrame,
     build_auto_camera_frames,
 )
+from trailgen.camera_follow import FollowCameraConfig, build_follow_camera_frames
 from trailgen.config import MapConfig, map_config
 from trailgen.ffmpeg import FFmpegError, encode_video
 from trailgen.geo import (
@@ -57,6 +58,14 @@ class RenderOptions:
     keep_frames: bool
     crf: int
     preset: str
+    camera_mode: str
+    follow_distance_m: float
+    follow_pitch_deg: float
+    follow_lookahead_m: float
+    follow_bearing_sensitivity: float
+    follow_panning_sensitivity: float
+    follow_smoothing_s: float
+    follow_min_clearance_m: float
 
 
 def _build_route_geojson(route: list[tuple[float, float]]) -> dict:
@@ -100,6 +109,8 @@ def _build_renderer_config(
         "terrainEncoding": map_cfg.terrain_encoding,
         "terrainExaggeration": map_cfg.terrain_exaggeration,
         "blankStyle": map_cfg.blank_style,
+        "mapProvider": map_cfg.map_provider,
+        "mapboxToken": map_cfg.mapbox_token,
         "routeColor": options.route_color,
         "routeWidth": options.route_width,
         "width": options.width,
@@ -150,12 +161,14 @@ def render_video(options: RenderOptions) -> None:
     map_cfg = map_config()
     scale = options.height / 1280.0
     scaled_route_width = max(1.0, options.route_width * scale)
-    initial_zoom = max(2.0, min(16.0, 12.0 + math.log2(scale)))
-    initial_pitch = 60.0
 
     quality = options.quality.lower()
     if quality not in {"preview", "final"}:
         raise ValueError(f"Unknown quality preset: {options.quality}")
+
+    camera_mode = (options.camera_mode or "auto").lower()
+    if camera_mode not in {"auto", "follow"}:
+        raise ValueError("camera_mode must be 'auto' or 'follow'.")
 
     auto_params = {
         "side_offset_m": 400.0,
@@ -169,17 +182,21 @@ def render_video(options: RenderOptions) -> None:
     }
     dem_zoom_bias = -2
     device_scale_factor = 1.0
+    base_max_zoom = map_cfg.max_zoom if map_cfg.max_zoom is not None else 14.0
     if quality == "preview":
-        max_zoom = 14.0
+        max_zoom = base_max_zoom
         frame_wait = "render"
         frame_delay_ms = 150
         frame_timeout_ms = 6000
     else:
-        max_zoom = 14.0
+        max_zoom = base_max_zoom
         frame_wait = "idle"
         frame_delay_ms = 0
         frame_timeout_ms = 20000
         device_scale_factor = 2.0
+
+    initial_zoom = max(2.0, min(max_zoom, 12.0 + math.log2(scale)))
+    initial_pitch = 60.0
 
     renderer_cfg = _build_renderer_config(
         map_cfg,
@@ -225,36 +242,58 @@ def render_video(options: RenderOptions) -> None:
         summit_idx = max(range(len(elevations)), key=lambda idx: elevations[idx])
         summit_distance = distances[summit_idx]
 
-        lookahead_m = (
-            options.lookahead_m
-            if options.lookahead_m is not None
-            else auto_params["lookahead_m"]
-        )
-        auto_cfg = AutoCameraConfig(
-            fps=options.fps,
-            intro_frames=intro_frames,
-            outro_frames=outro_frames,
-            total_frames=total_frames,
-            lookahead_m=lookahead_m,
-            side_offset_m=auto_params["side_offset_m"],
-            back_offset_m=auto_params["back_offset_m"],
-            base_clearance_m=auto_params["base_clearance_m"],
-            relief_factor=auto_params["relief_factor"],
-            summit_boost_m=auto_params["summit_boost_m"],
-            relief_window_m=auto_params["relief_window_m"],
-            summit_sigma_m=auto_params["summit_sigma_m"],
-        )
-        cameras = build_auto_camera_frames(
-            route_points,
-            distances,
-            total_distance,
-            auto_cfg,
-            terrain,
-            summit_distance,
-            elevations,
-        )
+        if camera_mode == "auto":
+            lookahead_m = (
+                options.lookahead_m
+                if options.lookahead_m is not None
+                else auto_params["lookahead_m"]
+            )
+            auto_cfg = AutoCameraConfig(
+                fps=options.fps,
+                intro_frames=intro_frames,
+                outro_frames=outro_frames,
+                total_frames=total_frames,
+                lookahead_m=lookahead_m,
+                side_offset_m=auto_params["side_offset_m"],
+                back_offset_m=auto_params["back_offset_m"],
+                base_clearance_m=auto_params["base_clearance_m"],
+                relief_factor=auto_params["relief_factor"],
+                summit_boost_m=auto_params["summit_boost_m"],
+                relief_window_m=auto_params["relief_window_m"],
+                summit_sigma_m=auto_params["summit_sigma_m"],
+            )
+            cameras = build_auto_camera_frames(
+                route_points,
+                distances,
+                total_distance,
+                auto_cfg,
+                terrain,
+                summit_distance,
+                elevations,
+            )
+        else:
+            follow_cfg = FollowCameraConfig(
+                fps=options.fps,
+                intro_frames=intro_frames,
+                outro_frames=outro_frames,
+                total_frames=total_frames,
+                distance_m=options.follow_distance_m,
+                pitch_deg=options.follow_pitch_deg,
+                lookahead_m=options.follow_lookahead_m,
+                bearing_sensitivity=options.follow_bearing_sensitivity,
+                panning_sensitivity=options.follow_panning_sensitivity,
+                smoothing_s=options.follow_smoothing_s,
+                min_clearance_m=options.follow_min_clearance_m,
+            )
+            cameras = build_follow_camera_frames(
+                route_points,
+                distances,
+                total_distance,
+                follow_cfg,
+                terrain,
+            )
     else:
-        raise RuntimeError("Terrain tiles are required for auto camera mode.")
+        raise RuntimeError("Terrain tiles are required for camera rendering.")
 
     frames_dir = _ensure_frames_dir(options.frames_dir)
     renderer_dir = (
