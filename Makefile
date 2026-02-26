@@ -16,43 +16,7 @@ build:
 
 bump:
 	@test -n "$(VERSION)" || (echo "VERSION is required. Example: make bump VERSION=0.1.0 (leading v optional)" && exit 1)
-	@VERSION_STRIPPED="$(VERSION_STRIPPED)" python - <<-'PY'
-	import os
-	import re
-	from pathlib import Path
-
-	version = os.environ.get("VERSION_STRIPPED") or os.environ.get("VERSION")
-	if not version:
-	    raise SystemExit("VERSION is required.")
-
-	if version.startswith("v"):
-	    version = version[1:]
-
-	pyproject = Path("pyproject.toml")
-	text = pyproject.read_text(encoding="utf-8")
-	new_text, count = re.subn(
-	    r'(?m)^version\\s*=\\s*\"[^\"]+\"',
-	    f'version = \"{version}\"',
-	    text,
-	    count=1,
-	)
-	if count != 1:
-	    raise SystemExit("Failed to update version in pyproject.toml")
-	pyproject.write_text(new_text, encoding="utf-8")
-
-	init_path = Path("src/trailgen/__init__.py")
-	text = init_path.read_text(encoding="utf-8")
-	new_text, count = re.subn(
-	    r'(?m)^__version__\\s*=\\s*\"[^\"]+\"',
-	    f'__version__ = \"{version}\"',
-	    text,
-	    count=1,
-	)
-	if count != 1:
-	    raise SystemExit("Failed to update version in src/trailgen/__init__.py")
-	init_path.write_text(new_text, encoding="utf-8")
-	print(f\"Bumped version to {version}\")
-	PY
+	@python scripts/bump_version.py "$(VERSION)"
 
 tag:
 	@test -n "$(VERSION)" || (echo "VERSION is required. Example: make tag VERSION=0.1.0 (leading v optional)" && exit 1)
