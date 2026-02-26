@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 from typing import Iterable
 
-from trailgen.gpx import GeoPoint
+from .gpx import GeoPoint
 
 
 EARTH_RADIUS_M = 6371000.0
@@ -19,7 +19,8 @@ class RoutePoint:
 
 def haversine_m(a: RoutePoint, b: RoutePoint) -> float:
     """
-    Calculates the great-circle distance in meters between two RoutePoints using the Haversine formula.
+    Calculates the great-circle distance in meters between two R
+    outePoints using the Haversine formula.
     Args:
         a: The first RoutePoint.
         b: The second RoutePoint.
@@ -34,7 +35,10 @@ def haversine_m(a: RoutePoint, b: RoutePoint) -> float:
     dlat = lat2 - lat1
     dlon = lon2 - lon1
 
-    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    h = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    )
     return 2 * EARTH_RADIUS_M * math.asin(min(1.0, math.sqrt(h)))
 
 
@@ -52,7 +56,9 @@ def bearing_deg(a: RoutePoint, b: RoutePoint) -> float:
     dlon = math.radians(b.lon - a.lon)
 
     y = math.sin(dlon) * math.cos(lat2)
-    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon)
+    x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(
+        dlon
+    )
     bearing = math.degrees(math.atan2(y, x))
     return (bearing + 360.0) % 360.0
 
@@ -89,8 +95,9 @@ def cumulative_distances(points: list[RoutePoint]) -> list[float]:
 
 def resample_by_distance(points: list[RoutePoint], step_m: float) -> list[RoutePoint]:
     """
-    Resamples the route so that points are spaced approximately every step_m meters apart.
-    Uses linear interpolation between points to create new points at the desired intervals.
+    Resamples the route so that points are spaced approximately every step_m
+    meters apart. Uses linear interpolation between points to create new
+    points at the desired intervals.
     Args:
         points: List of RoutePoint objects.
         step_m: Desired spacing in meters between points.
@@ -169,9 +176,12 @@ def chaikin_smooth(points: list[RoutePoint], iterations: int = 2) -> list[RouteP
     return current
 
 
-def interpolate_along_route(points: list[RoutePoint], distances: list[float], target_m: float) -> RoutePoint:
+def interpolate_along_route(
+    points: list[RoutePoint], distances: list[float], target_m: float
+) -> RoutePoint:
     """
-    Finds the position along the route at a specific cumulative distance using linear interpolation.
+    Finds the position along the route at a specific cumulative distance using
+    linear interpolation.
     Args:
         points: List of RoutePoint objects.
         distances: List of cumulative distances corresponding to points.
