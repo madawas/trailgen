@@ -1,5 +1,7 @@
 .PHONY: format lint precommit build bump tag release
 
+VERSION_STRIPPED = $(patsubst v%,%,$(VERSION))
+
 format:
 	black src
 
@@ -13,54 +15,57 @@ build:
 	uv build
 
 bump:
-	@test -n "$(VERSION)" || (echo "VERSION is required. Example: make bump VERSION=0.1.0" && exit 1)
-	@python - <<'PY'
-import os
-import re
-from pathlib import Path
+	@test -n "$(VERSION)" || (echo "VERSION is required. Example: make bump VERSION=0.1.0 (leading v optional)" && exit 1)
+	@VERSION_STRIPPED="$(VERSION_STRIPPED)" python - <<-'PY'
+	import os
+	import re
+	from pathlib import Path
 
-version = os.environ.get("VERSION")
-if not version:
-    raise SystemExit("VERSION is required.")
+	version = os.environ.get("VERSION_STRIPPED") or os.environ.get("VERSION")
+	if not version:
+	    raise SystemExit("VERSION is required.")
 
-pyproject = Path("pyproject.toml")
-text = pyproject.read_text(encoding="utf-8")
-new_text, count = re.subn(
-    r'(?m)^version\\s*=\\s*\"[^\"]+\"',
-    f'version = \"{version}\"',
-    text,
-    count=1,
-)
-if count != 1:
-    raise SystemExit("Failed to update version in pyproject.toml")
-pyproject.write_text(new_text, encoding="utf-8")
+	if version.startswith("v"):
+	    version = version[1:]
 
-init_path = Path("src/trailgen/__init__.py")
-text = init_path.read_text(encoding="utf-8")
-new_text, count = re.subn(
-    r'(?m)^__version__\\s*=\\s*\"[^\"]+\"',
-    f'__version__ = \"{version}\"',
-    text,
-    count=1,
-)
-if count != 1:
-    raise SystemExit("Failed to update version in src/trailgen/__init__.py")
-init_path.write_text(new_text, encoding="utf-8")
-print(f\"Bumped version to {version}\")
-PY
+	pyproject = Path("pyproject.toml")
+	text = pyproject.read_text(encoding="utf-8")
+	new_text, count = re.subn(
+	    r'(?m)^version\\s*=\\s*\"[^\"]+\"',
+	    f'version = \"{version}\"',
+	    text,
+	    count=1,
+	)
+	if count != 1:
+	    raise SystemExit("Failed to update version in pyproject.toml")
+	pyproject.write_text(new_text, encoding="utf-8")
+
+	init_path = Path("src/trailgen/__init__.py")
+	text = init_path.read_text(encoding="utf-8")
+	new_text, count = re.subn(
+	    r'(?m)^__version__\\s*=\\s*\"[^\"]+\"',
+	    f'__version__ = \"{version}\"',
+	    text,
+	    count=1,
+	)
+	if count != 1:
+	    raise SystemExit("Failed to update version in src/trailgen/__init__.py")
+	init_path.write_text(new_text, encoding="utf-8")
+	print(f\"Bumped version to {version}\")
+	PY
 
 tag:
-	@test -n "$(VERSION)" || (echo "VERSION is required. Example: make tag VERSION=0.1.0" && exit 1)
+	@test -n "$(VERSION)" || (echo "VERSION is required. Example: make tag VERSION=0.1.0 (leading v optional)" && exit 1)
 	@git diff --quiet || (echo "Working tree is dirty. Commit or stash changes first." && exit 1)
-	@git tag -a v$(VERSION) -m "v$(VERSION)"
+	@git tag -a v$(VERSION_STRIPPED) -m "v$(VERSION_STRIPPED)"
 
 release:
-	@test -n "$(VERSION)" || (echo "VERSION is required. Example: make release VERSION=0.1.0" && exit 1)
+	@test -n "$(VERSION)" || (echo "VERSION is required. Example: make release VERSION=0.1.0 (leading v optional)" && exit 1)
 	@git diff --quiet || (echo "Working tree is dirty. Commit or stash changes first." && exit 1)
-	@$(MAKE) bump VERSION=$(VERSION)
+	@$(MAKE) bump VERSION=$(VERSION_STRIPPED)
 	@git add pyproject.toml src/trailgen/__init__.py
-	@git commit -m "Bump version to v$(VERSION)"
+	@git commit -m "Bump version to v$(VERSION_STRIPPED)"
 	@$(MAKE) build
-	@$(MAKE) tag VERSION=$(VERSION)
+	@$(MAKE) tag VERSION=$(VERSION_STRIPPED)
 	@git push origin HEAD
-	@git push origin v$(VERSION)
+	@git push origin v$(VERSION_STRIPPED)
