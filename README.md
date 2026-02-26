@@ -11,7 +11,13 @@ uv venv
 uv pip install -e ".[dev]"
 ```
 
-2. Add your map provider credentials in `.env`:
+2. Configure defaults (recommended):
+
+```bash
+uv run trailgen configure
+```
+
+Or add your map provider credentials in `.env`:
 
 ```bash
 # MapTiler (default)
@@ -46,6 +52,28 @@ Note: `uv init` is only for creating new projects. This repo already has `pyproj
 ## Tile Cache
 
 Tiles are cached on disk at `~/.trailgen/cache`.
+
+## Configuration
+
+Config is stored in a local file (created by `trailgen configure`):
+
+- macOS: `~/Library/Application Support/trailgen/config.ini`
+- Linux: `~/.config/trailgen/config.ini`
+
+Override with `TRAILGEN_CONFIG_PATH`.
+
+Environment overrides (highest priority):
+
+- `MAP_PROVIDER` (maptiler|mapbox)
+- `MAPTILER_KEY` or `TRAILGEN_MAPTILER_KEY`
+- `MAPBOX_TOKEN`
+- `TRAILGEN_STYLE_URL` (or `MAPBOX_STYLE_URL` for mapbox)
+- `TRAILGEN_TERRAIN_TILES` (or `MAPBOX_TERRAIN_TILES` for mapbox)
+- `TRAILGEN_TERRAIN_ENCODING`
+- `TRAILGEN_TERRAIN_EXAGGERATION` (also supports `MAP_TERRAIN_EXAGGERATION`, `TERRAIN_EXAGGERATION`)
+- `TRAILGEN_MAX_ZOOM` (or `MAP_MAX_ZOOM`)
+- `TRAILGEN_CACHE_DIR`
+- `TRAILGEN_CACHE_MAX` (bytes or KB/MB/GB/TB)
 
 ## Resolution and Orientation
 

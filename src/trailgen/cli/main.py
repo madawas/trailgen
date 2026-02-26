@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import logging
 import os
+from dataclasses import replace
 from pathlib import Path
 
 from dotenv import load_dotenv
 
+from trailgen.config import (
+    load_app_config,
+    parse_size,
+    resolve_config_path,
+    save_app_config,
+)
 from trailgen.render import RenderOptions, render_video
 
 RESOLUTION_DIMENSIONS = {
@@ -56,12 +64,289 @@ def resolve_dimensions(
     return base_width, base_height
 
 
+def _format_bytes(value: int) -> str:
+    if value <= 0:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(value)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{int(value)} B"
+
+
+def _prompt_value(
+    label: str,
+    current,
+    *,
+    secret: bool = False,
+    parser=None,
+    display: str | None = None,
+):
+    while True:
+        if secret:
+            current_hint = "set" if current else "not set"
+            prompt = f"{label} [{current_hint}]: "
+            value = getpass.getpass(prompt)
+        else:
+            current_hint = "" if current is None else (display or str(current))
+            prompt = f"{label} [{current_hint}]: " if current_hint else f"{label}: "
+            value = input(prompt)
+        if value == "":
+            return current
+        if parser:
+            try:
+                return parser(value)
+            except ValueError as exc:
+                print(f"Invalid {label}: {exc}")
+                continue
+        return value
+
+
+def _prompt_provider(current: str) -> str:
+    def parse_provider(value: str) -> str:
+        lowered = value.strip().lower()
+        if lowered not in {"maptiler", "mapbox"}:
+            raise ValueError("Use 'maptiler' or 'mapbox'.")
+        return lowered
+
+    return _prompt_value(
+        "Map provider (maptiler|mapbox)", current or "maptiler", parser=parse_provider
+    )
+
+
+def _validate_provider(value: str) -> str:
+    lowered = value.strip().lower()
+    if lowered not in {"maptiler", "mapbox"}:
+        raise ValueError("Map provider must be 'maptiler' or 'mapbox'.")
+    return lowered
+
+
+def handle_configure(args: argparse.Namespace) -> None:
+    config_path = resolve_config_path(args.config_path)
+    current = load_app_config(config_path, include_env=False)
+
+    updates: dict[str, object] = {}
+
+    def set_value(field: str, value):
+        if value is not None:
+            updates[field] = value
+
+    if args.non_interactive:
+        if args.cache_max is not None:
+            updates["cache_max_bytes"] = parse_size(
+                args.cache_max, current.cache_max_bytes
+            )
+        if args.map_provider is not None:
+            updates["map_provider"] = _validate_provider(args.map_provider)
+        set_value("maptiler_key", args.maptiler_key)
+        set_value("mapbox_token", args.mapbox_token)
+        set_value("style_url", args.style_url)
+        set_value("terrain_tiles", args.terrain_tiles)
+        set_value("terrain_encoding", args.terrain_encoding)
+        set_value("terrain_exaggeration", args.terrain_exaggeration)
+        set_value("max_zoom", args.max_zoom)
+        set_value("cache_dir", args.cache_dir)
+
+        if not updates:
+            raise SystemExit("No configuration values provided.")
+    else:
+        provider = (
+            _validate_provider(args.map_provider)
+            if args.map_provider is not None
+            else _prompt_provider(current.map_provider)
+        )
+
+        def parse_encoding(value: str) -> str:
+            lowered = value.strip().lower()
+            if lowered not in {"mapbox", "terrarium"}:
+                raise ValueError("Use 'mapbox' or 'terrarium'.")
+            return lowered
+
+        def parse_exaggeration(value: str) -> float:
+            parsed = float(value)
+            if parsed <= 0:
+                raise ValueError("Value must be greater than 0.")
+            return parsed
+
+        def parse_max_zoom(value: str) -> float:
+            parsed = float(value)
+            if parsed <= 0:
+                raise ValueError("Value must be greater than 0.")
+            return parsed
+
+        maptiler_key = current.maptiler_key
+        mapbox_token = current.mapbox_token
+        if provider == "maptiler":
+            maptiler_key = (
+                args.maptiler_key
+                if args.maptiler_key is not None
+                else _prompt_value(
+                    "MapTiler API key", current.maptiler_key, secret=True
+                )
+            )
+        else:
+            mapbox_token = (
+                args.mapbox_token
+                if args.mapbox_token is not None
+                else _prompt_value("Mapbox token", current.mapbox_token, secret=True)
+            )
+
+        cache_dir = (
+            args.cache_dir
+            if args.cache_dir is not None
+            else Path(_prompt_value("Cache directory", current.cache_dir)).expanduser()
+        )
+        cache_max_bytes = (
+            parse_size(args.cache_max, current.cache_max_bytes)
+            if args.cache_max is not None
+            else _prompt_value(
+                "Cache max size",
+                current.cache_max_bytes,
+                display=_format_bytes(current.cache_max_bytes),
+                parser=lambda v: parse_size(v, current.cache_max_bytes),
+            )
+        )
+        style_url = (
+            args.style_url
+            if args.style_url is not None
+            else _prompt_value("Map style URL (optional)", current.style_url)
+        )
+        terrain_tiles = (
+            args.terrain_tiles
+            if args.terrain_tiles is not None
+            else _prompt_value("Terrain tiles URL (optional)", current.terrain_tiles)
+        )
+        terrain_encoding = (
+            args.terrain_encoding
+            if args.terrain_encoding is not None
+            else _prompt_value(
+                "Terrain encoding (mapbox|terrarium)",
+                current.terrain_encoding or "mapbox",
+                parser=parse_encoding,
+            )
+        )
+        terrain_exaggeration = (
+            args.terrain_exaggeration
+            if args.terrain_exaggeration is not None
+            else _prompt_value(
+                "Terrain exaggeration",
+                (
+                    current.terrain_exaggeration
+                    if current.terrain_exaggeration is not None
+                    else 1.2
+                ),
+                parser=parse_exaggeration,
+            )
+        )
+        max_zoom = (
+            args.max_zoom
+            if args.max_zoom is not None
+            else _prompt_value(
+                "Max zoom (optional)",
+                current.max_zoom,
+                parser=parse_max_zoom,
+            )
+        )
+
+        updates = {
+            "map_provider": provider,
+            "maptiler_key": maptiler_key,
+            "mapbox_token": mapbox_token,
+            "style_url": style_url,
+            "terrain_tiles": terrain_tiles,
+            "terrain_encoding": terrain_encoding,
+            "terrain_exaggeration": terrain_exaggeration,
+            "max_zoom": max_zoom,
+            "cache_dir": cache_dir,
+            "cache_max_bytes": cache_max_bytes,
+        }
+
+    updated = replace(current, **updates)
+    path = save_app_config(updated, config_path)
+    print(f"Saved config to {path}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trailgen",
         description="Generate 3D trail videos from GPX files.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    configure = sub.add_parser(
+        "configure", help="Configure default settings (stored on disk)."
+    )
+    configure.add_argument(
+        "--config-path",
+        type=Path,
+        default=None,
+        help="Optional config file path override.",
+    )
+    configure.add_argument(
+        "--map-provider",
+        choices=["maptiler", "mapbox"],
+        default=None,
+        help="Map provider (maptiler or mapbox).",
+    )
+    configure.add_argument(
+        "--maptiler-key", type=str, default=None, help="MapTiler API key."
+    )
+    configure.add_argument(
+        "--mapbox-token", type=str, default=None, help="Mapbox access token."
+    )
+    configure.add_argument(
+        "--style-url",
+        type=str,
+        default=None,
+        help="Map style URL template (supports {key} or {token}).",
+    )
+    configure.add_argument(
+        "--terrain-tiles",
+        type=str,
+        default=None,
+        help="Terrain tiles URL template (supports {key} or {token}).",
+    )
+    configure.add_argument(
+        "--terrain-encoding",
+        type=str,
+        choices=["mapbox", "terrarium"],
+        default=None,
+        help="Terrain tile encoding.",
+    )
+    configure.add_argument(
+        "--terrain-exaggeration",
+        type=float,
+        default=None,
+        help="Terrain exaggeration multiplier.",
+    )
+    configure.add_argument(
+        "--max-zoom",
+        type=float,
+        default=None,
+        help="Override map max zoom.",
+    )
+    configure.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help="Cache directory for tiles.",
+    )
+    configure.add_argument(
+        "--cache-max",
+        type=str,
+        default=None,
+        help="Cache size limit (bytes or KB/MB/GB/TB).",
+    )
+    configure.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Do not prompt; only use provided flags.",
+        default=False,
+    )
 
     render = sub.add_parser("render", help="Render a 3D trail video from a GPX file.")
     render.add_argument("--gpx", required=True, type=Path, help="Path to a GPX file.")
@@ -222,6 +507,10 @@ def main() -> None:
     configure_logging()
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "configure":
+        handle_configure(args)
+        return
 
     if args.command == "render":
         width, height = resolve_dimensions(args, parser)

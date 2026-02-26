@@ -23,7 +23,7 @@ from trailgen.camera import (
     FollowCameraConfig,
     build_follow_camera_frames,
 )
-from trailgen.config import MapConfig, map_config
+from trailgen.config import MapConfig, load_app_config, map_config
 from trailgen.geo import (
     RoutePoint,
     chaikin_smooth,
@@ -160,7 +160,8 @@ def render_video(options: RenderOptions) -> None:
     route_coords = [[p.lon, p.lat] for p in route_points]
     route_geojson = _build_route_geojson(route_coords)
 
-    map_cfg = map_config()
+    app_cfg = load_app_config()
+    map_cfg = map_config(app_cfg)
     scale = options.height / 1280.0
     scaled_route_width = max(1.0, options.route_width * scale)
 
@@ -214,7 +215,7 @@ def render_video(options: RenderOptions) -> None:
     renderer_cfg["routeWidth"] = scaled_route_width
     renderer_cfg["initialZoom"] = initial_zoom
 
-    cache_dir = Path("~/.trailgen/cache").expanduser()
+    cache_dir = app_cfg.cache_dir
 
     cameras: list[FreeCameraFrame] = []
     if map_cfg.terrain_tiles:
@@ -309,6 +310,7 @@ def render_video(options: RenderOptions) -> None:
         map_cfg.raster_tiles,
         map_cfg.terrain_tiles,
         cache_dir=cache_dir,
+        cache_max_bytes=app_cfg.cache_max_bytes,
     ) as server:
         if server.raster_url_template:
             renderer_cfg["rasterTiles"] = server.raster_url_template

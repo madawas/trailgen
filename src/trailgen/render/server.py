@@ -22,11 +22,13 @@ class RendererServer:
         raster_upstream: str | None,
         terrain_upstream: str | None,
         cache_dir: Path,
+        cache_max_bytes: int,
     ):
         self._renderer_dir = renderer_dir
         self._raster_upstream = raster_upstream
         self._terrain_upstream = terrain_upstream
         self._cache_dir = cache_dir
+        self._cache_max_bytes = cache_max_bytes
         self._raster_ext = (
             self._infer_extension(raster_upstream) if raster_upstream else "png"
         )
@@ -87,7 +89,7 @@ class RendererServer:
         raster_upstream = self._raster_upstream
         terrain_upstream = self._terrain_upstream
         cache_dir = self._cache_dir
-        cache_max_bytes = 2 * 1024 * 1024 * 1024
+        cache_max_bytes = self._cache_max_bytes
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
