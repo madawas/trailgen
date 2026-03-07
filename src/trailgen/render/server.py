@@ -23,12 +23,14 @@ class RendererServer:
         terrain_upstream: str | None,
         cache_dir: Path,
         cache_max_bytes: int,
+        tile_timeout_s: float,
     ):
         self._renderer_dir = renderer_dir
         self._raster_upstream = raster_upstream
         self._terrain_upstream = terrain_upstream
         self._cache_dir = cache_dir
         self._cache_max_bytes = cache_max_bytes
+        self._tile_timeout_s = tile_timeout_s
         self._raster_ext = (
             self._infer_extension(raster_upstream) if raster_upstream else "png"
         )
@@ -90,6 +92,7 @@ class RendererServer:
         terrain_upstream = self._terrain_upstream
         cache_dir = self._cache_dir
         cache_max_bytes = self._cache_max_bytes
+        tile_timeout_s = self._tile_timeout_s
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
@@ -175,7 +178,7 @@ class RendererServer:
                     target, headers={"User-Agent": "trailgen/0.1"}
                 )
                 try:
-                    with urllib.request.urlopen(req, timeout=20) as resp:
+                    with urllib.request.urlopen(req, timeout=tile_timeout_s) as resp:
                         payload = resp.read()
                         content_type = (
                             resp.headers.get("Content-Type")

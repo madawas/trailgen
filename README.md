@@ -41,7 +41,15 @@ uv run playwright install chromium
 
 Note: Installing the Python package does not install Playwright browser binaries. You must run the command above on each machine.
 
-4. Render a video (vertical 720p @ 30 fps):
+4. Optional: vendor MapLibre assets (recommended for production/offline):
+
+```bash
+scripts/vendor_maplibre.sh
+```
+
+If you skip this step, MapLibre will load from the CDN as a fallback.
+
+5. Render a video (vertical 720p @ 30 fps):
 
 ```bash
 uv run trailgen render --gpx /path/to/route.gpx --out outputs/route.mp4 --fps 30 --resolution 720p --orientation portrait --duration 45
@@ -74,6 +82,9 @@ Environment overrides (highest priority):
 - `TRAILGEN_MAX_ZOOM` (or `MAP_MAX_ZOOM`)
 - `TRAILGEN_CACHE_DIR`
 - `TRAILGEN_CACHE_MAX` (bytes or KB/MB/GB/TB)
+- `TRAILGEN_PAGE_TIMEOUT_MS`
+- `TRAILGEN_FRAME_TIMEOUT_MS`
+- `TRAILGEN_TILE_TIMEOUT_S`
 
 ## Resolution and Orientation
 

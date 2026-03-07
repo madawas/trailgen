@@ -70,6 +70,7 @@ class TerrainSampler:
     cache_dir: Path
     zoom: int
     exaggeration: float = 1.0
+    timeout_s: float = 20.0
 
     def __post_init__(self) -> None:
         self._encoding = (self.encoding or "mapbox").lower()
@@ -121,7 +122,7 @@ class TerrainSampler:
                 req = urllib.request.Request(
                     url, headers={"User-Agent": "trailgen/0.1"}
                 )
-                with urllib.request.urlopen(req, timeout=20) as resp:
+                with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
                     data = resp.read()
                 try:
                     tile_path.write_bytes(data)

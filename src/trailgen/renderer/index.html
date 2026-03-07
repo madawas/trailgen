@@ -6,7 +6,8 @@
     <title>Trail Renderer</title>
     <link
       rel="stylesheet"
-      href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css"
+      href="./vendor/maplibre-gl.css"
+      onerror="this.onerror=null;this.href='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css';"
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -19,7 +20,10 @@
     >
       <img src="https://api.maptiler.com/resources/logo.svg" alt="MapTiler logo" />
     </a>
-    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <script
+      src="./vendor/maplibre-gl.js"
+      onerror="var s=document.createElement('script');s.src='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js';document.head.appendChild(s);"
+    ></script>
     <script src="./app.js"></script>
   </body>
 </html>

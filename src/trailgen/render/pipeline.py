@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import tempfile
+from importlib import resources
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -190,12 +191,12 @@ def render_video(options: RenderOptions) -> None:
         max_zoom = base_max_zoom
         frame_wait = "render"
         frame_delay_ms = 150
-        frame_timeout_ms = 6000
+        frame_timeout_ms = app_cfg.frame_timeout_ms or 6000
     else:
         max_zoom = base_max_zoom
         frame_wait = "idle"
         frame_delay_ms = 0
-        frame_timeout_ms = 20000
+        frame_timeout_ms = app_cfg.frame_timeout_ms or 20000
         device_scale_factor = 2.0
 
     initial_zoom = max(2.0, min(max_zoom, 12.0 + math.log2(scale)))
@@ -228,6 +229,7 @@ def render_video(options: RenderOptions) -> None:
             cache_dir=cache_dir,
             zoom=dem_zoom,
             exaggeration=map_cfg.terrain_exaggeration or 1.0,
+            timeout_s=app_cfg.tile_timeout_s,
         )
 
         elevations = [p.ele for p in route_points]
@@ -299,118 +301,135 @@ def render_video(options: RenderOptions) -> None:
         raise RuntimeError("Terrain tiles are required for camera rendering.")
 
     frames_dir = _ensure_frames_dir(options.frames_dir)
-    renderer_dir = (Path(__file__).resolve().parents[3] / "renderer").resolve()
+    cleanup_frames = not options.keep_frames and options.frames_dir is None
 
     logger.info("Rendering %s frames to %s...", total_frames, frames_dir)
 
     debug = logger.isEnabledFor(logging.DEBUG)
 
-    with RendererServer(
-        renderer_dir,
-        map_cfg.raster_tiles,
-        map_cfg.terrain_tiles,
-        cache_dir=cache_dir,
-        cache_max_bytes=app_cfg.cache_max_bytes,
-    ) as server:
-        if server.raster_url_template:
-            renderer_cfg["rasterTiles"] = server.raster_url_template
-        if server.terrain_url_template:
-            renderer_cfg["terrainTiles"] = server.terrain_url_template
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                args=[
-                    "--use-gl=swiftshader",
-                    "--enable-webgl",
-                    "--ignore-gpu-blocklist",
-                ]
-            )
-            page = browser.new_page(
-                viewport={"width": options.width, "height": options.height},
-                device_scale_factor=device_scale_factor,
-            )
-            page.set_default_timeout(120_000)
-            if debug:
-                page.on(
-                    "console",
-                    lambda msg: logger.debug("[browser %s] %s", msg.type, msg.text),
-                )
-                page.on(
-                    "pageerror", lambda err: logger.debug("[browser error] %s", err)
-                )
-
-                def log_request_failed(request) -> None:
-                    failure = request.failure
-                    error_text = None
-                    try:
-                        if callable(failure):
-                            info = failure()
-                            if isinstance(info, dict):
-                                error_text = info.get("errorText")
-                        elif isinstance(failure, dict):
-                            error_text = failure.get("errorText")
-                        else:
-                            error_text = getattr(failure, "error_text", None)
-                    except Exception:
-                        error_text = None
-
-                    if not error_text:
-                        error_text = "request failed"
-                    logger.debug("[request failed] %s %s", error_text, request.url)
-
-                page.on("requestfailed", log_request_failed)
-            page.add_init_script(f"window.__CONFIG__ = {json.dumps(renderer_cfg)};")
-            page.goto(f"{server.base_url}/index.html", wait_until="load")
-            page.wait_for_function(
-                "window.__READY__ === true || window.__READY__ === 'error'"
-            )
-            ready_state = page.evaluate("window.__READY__")
-            if not ready_state:
-                error_message = (
-                    page.evaluate("window.__ERROR__")
-                    or "Renderer failed to initialize."
-                )
-                raise RuntimeError(error_message)
-
-            page.evaluate("data => window.__setRoute(data)", route_geojson)
-            page.wait_for_function("window.__ROUTE_READY__ === true")
-
-            with Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TextColumn("{task.percentage:>3.0f}%"),
-                TextColumn("{task.completed}/{task.total}"),
-                TimeElapsedColumn(),
-                TimeRemainingColumn(),
-                transient=False,
-            ) as progress:
-                task_id = progress.add_task("Rendering frames", total=total_frames)
-                for idx, cam in enumerate(cameras, start=1):
-                    page.evaluate("data => window.__renderFrame(data)", cam.__dict__)
-                    frame_path = frames_dir / f"frame_{idx:06d}.png"
-                    screenshot_kwargs = {"path": str(frame_path)}
-                    if device_scale_factor > 1.0:
-                        screenshot_kwargs["scale"] = "css"
-                    try:
-                        page.screenshot(**screenshot_kwargs)
-                    except TypeError:
-                        screenshot_kwargs.pop("scale", None)
-                        page.screenshot(**screenshot_kwargs)
-                    progress.update(task_id, advance=1)
-
-            browser.close()
-
-    logger.info("Encoding video...")
     try:
-        encode_video(
-            frames_dir, options.out_path, options.fps, options.crf, options.preset
-        )
-    except FFmpegError as exc:
-        raise RuntimeError(str(exc)) from exc
+        with resources.as_file(resources.files("trailgen.renderer")) as renderer_dir:
+            with RendererServer(
+                renderer_dir,
+                map_cfg.raster_tiles,
+                map_cfg.terrain_tiles,
+                cache_dir=cache_dir,
+                cache_max_bytes=app_cfg.cache_max_bytes,
+                tile_timeout_s=app_cfg.tile_timeout_s,
+            ) as server:
+                if server.raster_url_template:
+                    renderer_cfg["rasterTiles"] = server.raster_url_template
+                if server.terrain_url_template:
+                    renderer_cfg["terrainTiles"] = server.terrain_url_template
 
-    if not options.keep_frames and options.frames_dir is None:
-        for frame in frames_dir.glob("frame_*.png"):
-            frame.unlink(missing_ok=True)
-        frames_dir.rmdir()
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(
+                        args=[
+                            "--use-gl=swiftshader",
+                            "--enable-webgl",
+                            "--ignore-gpu-blocklist",
+                        ]
+                    )
+                    page = browser.new_page(
+                        viewport={"width": options.width, "height": options.height},
+                        device_scale_factor=device_scale_factor,
+                    )
+                    page.set_default_timeout(app_cfg.page_timeout_ms)
+                    if debug:
+                        page.on(
+                            "console",
+                            lambda msg: logger.debug(
+                                "[browser %s] %s", msg.type, msg.text
+                            ),
+                        )
+                        page.on(
+                            "pageerror",
+                            lambda err: logger.debug("[browser error] %s", err),
+                        )
 
-    logger.info("Done: %s", options.out_path)
+                        def log_request_failed(request) -> None:
+                            failure = request.failure
+                            error_text = None
+                            try:
+                                if callable(failure):
+                                    info = failure()
+                                    if isinstance(info, dict):
+                                        error_text = info.get("errorText")
+                                elif isinstance(failure, dict):
+                                    error_text = failure.get("errorText")
+                                else:
+                                    error_text = getattr(failure, "error_text", None)
+                            except Exception:
+                                error_text = None
+
+                            if not error_text:
+                                error_text = "request failed"
+                            logger.debug(
+                                "[request failed] %s %s", error_text, request.url
+                            )
+
+                        page.on("requestfailed", log_request_failed)
+                    page.add_init_script(
+                        f"window.__CONFIG__ = {json.dumps(renderer_cfg)};"
+                    )
+                    page.goto(f"{server.base_url}/index.html", wait_until="load")
+                    page.wait_for_function(
+                        "window.__READY__ === true || window.__READY__ === 'error'"
+                    )
+                    ready_state = page.evaluate("window.__READY__")
+                    if not ready_state:
+                        error_message = (
+                            page.evaluate("window.__ERROR__")
+                            or "Renderer failed to initialize."
+                        )
+                        raise RuntimeError(error_message)
+
+                    page.evaluate("data => window.__setRoute(data)", route_geojson)
+                    page.wait_for_function("window.__ROUTE_READY__ === true")
+
+                    with Progress(
+                        TextColumn("[progress.description]{task.description}"),
+                        BarColumn(),
+                        TextColumn("{task.percentage:>3.0f}%"),
+                        TextColumn("{task.completed}/{task.total}"),
+                        TimeElapsedColumn(),
+                        TimeRemainingColumn(),
+                        transient=False,
+                    ) as progress:
+                        task_id = progress.add_task(
+                            "Rendering frames", total=total_frames
+                        )
+                        for idx, cam in enumerate(cameras, start=1):
+                            page.evaluate(
+                                "data => window.__renderFrame(data)", cam.__dict__
+                            )
+                            frame_path = frames_dir / f"frame_{idx:06d}.png"
+                            screenshot_kwargs = {"path": str(frame_path)}
+                            if device_scale_factor > 1.0:
+                                screenshot_kwargs["scale"] = "css"
+                            try:
+                                page.screenshot(**screenshot_kwargs)
+                            except TypeError:
+                                screenshot_kwargs.pop("scale", None)
+                                page.screenshot(**screenshot_kwargs)
+                            progress.update(task_id, advance=1)
+
+                    browser.close()
+
+        logger.info("Encoding video...")
+        try:
+            encode_video(
+                frames_dir, options.out_path, options.fps, options.crf, options.preset
+            )
+        except FFmpegError as exc:
+            raise RuntimeError(str(exc)) from exc
+
+        logger.info("Done: %s", options.out_path)
+    finally:
+        if cleanup_frames:
+            for frame in frames_dir.glob("frame_*.png"):
+                frame.unlink(missing_ok=True)
+            try:
+                frames_dir.rmdir()
+            except OSError:
+                pass

@@ -25,6 +25,8 @@ MAPBOX_TERRAIN_TILES = (
 
 DEFAULT_CACHE_MAX_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_PROVIDER = "maptiler"
+DEFAULT_PAGE_TIMEOUT_MS = 120_000
+DEFAULT_TILE_TIMEOUT_S = 20.0
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,9 @@ class AppConfig:
     max_zoom: float | None
     cache_dir: Path
     cache_max_bytes: int
+    page_timeout_ms: int
+    frame_timeout_ms: int | None
+    tile_timeout_s: float
 
 
 @dataclass(frozen=True)
@@ -136,6 +141,9 @@ def load_app_config(
         section.get("terrain_exaggeration"), "terrain_exaggeration"
     )
     max_zoom = _parse_float(section.get("max_zoom"), "max_zoom")
+    page_timeout_ms = _parse_float(section.get("page_timeout_ms"), "page_timeout_ms")
+    frame_timeout_ms = _parse_float(section.get("frame_timeout_ms"), "frame_timeout_ms")
+    tile_timeout_s = _parse_float(section.get("tile_timeout_s"), "tile_timeout_s")
 
     cache_dir_value = section.get("cache_dir")
     if cache_dir_value is None or not cache_dir_value.strip():
@@ -184,6 +192,18 @@ def load_app_config(
         if cache_max_env:
             cache_max_bytes = parse_size(cache_max_env, cache_max_bytes)
 
+        page_timeout_env = os.getenv("TRAILGEN_PAGE_TIMEOUT_MS")
+        if page_timeout_env:
+            page_timeout_ms = _parse_float(page_timeout_env, "page_timeout_ms")
+
+        frame_timeout_env = os.getenv("TRAILGEN_FRAME_TIMEOUT_MS")
+        if frame_timeout_env:
+            frame_timeout_ms = _parse_float(frame_timeout_env, "frame_timeout_ms")
+
+        tile_timeout_env = os.getenv("TRAILGEN_TILE_TIMEOUT_S")
+        if tile_timeout_env:
+            tile_timeout_s = _parse_float(tile_timeout_env, "tile_timeout_s")
+
     return AppConfig(
         map_provider=provider.lower(),
         maptiler_key=maptiler_key,
@@ -195,6 +215,9 @@ def load_app_config(
         max_zoom=max_zoom,
         cache_dir=cache_dir,
         cache_max_bytes=cache_max_bytes,
+        page_timeout_ms=int(page_timeout_ms or DEFAULT_PAGE_TIMEOUT_MS),
+        frame_timeout_ms=int(frame_timeout_ms) if frame_timeout_ms else None,
+        tile_timeout_s=float(tile_timeout_s or DEFAULT_TILE_TIMEOUT_S),
     )
 
 
@@ -217,6 +240,11 @@ def save_app_config(config: AppConfig, config_path: Path | None = None) -> Path:
         "max_zoom": "" if config.max_zoom is None else str(config.max_zoom),
         "cache_dir": str(config.cache_dir),
         "cache_max_bytes": str(config.cache_max_bytes),
+        "page_timeout_ms": str(config.page_timeout_ms),
+        "frame_timeout_ms": (
+            "" if config.frame_timeout_ms is None else str(config.frame_timeout_ms)
+        ),
+        "tile_timeout_s": str(config.tile_timeout_s),
     }
     buffer = io.StringIO()
     parser.write(buffer)

@@ -140,6 +140,12 @@ def handle_configure(args: argparse.Namespace) -> None:
             updates["cache_max_bytes"] = parse_size(
                 args.cache_max, current.cache_max_bytes
             )
+        if args.page_timeout_ms is not None:
+            updates["page_timeout_ms"] = args.page_timeout_ms
+        if args.frame_timeout_ms is not None:
+            updates["frame_timeout_ms"] = args.frame_timeout_ms
+        if args.tile_timeout_s is not None:
+            updates["tile_timeout_s"] = args.tile_timeout_s
         if args.map_provider is not None:
             updates["map_provider"] = _validate_provider(args.map_provider)
         set_value("maptiler_key", args.maptiler_key)
@@ -173,6 +179,18 @@ def handle_configure(args: argparse.Namespace) -> None:
             return parsed
 
         def parse_max_zoom(value: str) -> float:
+            parsed = float(value)
+            if parsed <= 0:
+                raise ValueError("Value must be greater than 0.")
+            return parsed
+
+        def parse_timeout_ms(value: str) -> int:
+            parsed = int(float(value))
+            if parsed <= 0:
+                raise ValueError("Value must be greater than 0.")
+            return parsed
+
+        def parse_timeout_s(value: str) -> float:
             parsed = float(value)
             if parsed <= 0:
                 raise ValueError("Value must be greater than 0.")
@@ -251,6 +269,33 @@ def handle_configure(args: argparse.Namespace) -> None:
                 parser=parse_max_zoom,
             )
         )
+        page_timeout_ms = (
+            args.page_timeout_ms
+            if args.page_timeout_ms is not None
+            else _prompt_value(
+                "Page timeout (ms)",
+                current.page_timeout_ms,
+                parser=parse_timeout_ms,
+            )
+        )
+        frame_timeout_ms = (
+            args.frame_timeout_ms
+            if args.frame_timeout_ms is not None
+            else _prompt_value(
+                "Frame timeout (ms, optional)",
+                current.frame_timeout_ms,
+                parser=parse_timeout_ms,
+            )
+        )
+        tile_timeout_s = (
+            args.tile_timeout_s
+            if args.tile_timeout_s is not None
+            else _prompt_value(
+                "Tile timeout (seconds)",
+                current.tile_timeout_s,
+                parser=parse_timeout_s,
+            )
+        )
 
         updates = {
             "map_provider": provider,
@@ -263,6 +308,9 @@ def handle_configure(args: argparse.Namespace) -> None:
             "max_zoom": max_zoom,
             "cache_dir": cache_dir,
             "cache_max_bytes": cache_max_bytes,
+            "page_timeout_ms": page_timeout_ms,
+            "frame_timeout_ms": frame_timeout_ms,
+            "tile_timeout_s": tile_timeout_s,
         }
 
     updated = replace(current, **updates)
@@ -340,6 +388,24 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Cache size limit (bytes or KB/MB/GB/TB).",
+    )
+    configure.add_argument(
+        "--page-timeout-ms",
+        type=int,
+        default=None,
+        help="Playwright page timeout in milliseconds.",
+    )
+    configure.add_argument(
+        "--frame-timeout-ms",
+        type=int,
+        default=None,
+        help="Renderer frame timeout in milliseconds.",
+    )
+    configure.add_argument(
+        "--tile-timeout-s",
+        type=float,
+        default=None,
+        help="Tile download timeout in seconds.",
     )
     configure.add_argument(
         "--non-interactive",
